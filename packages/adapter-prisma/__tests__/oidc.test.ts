@@ -286,7 +286,7 @@ describe("OIDC JWT verification", () => {
     });
     expect((await publicMutations.PATCH(patchRequest("missing"))).status).toBe(401);
     expect((await publicMutations.DELETE(deleteRequest("missing"))).status).toBe(401);
-    expect((await publicMutations.PATCH(patchRequest("missing", member))).status).toBe(403);
+    expect((await publicMutations.PATCH(patchRequest("missing", member))).status).toBe(404);
     expect((await publicMutations.DELETE(deleteAllRequest(member))).status).toBe(403);
   });
 
@@ -347,6 +347,7 @@ describe("OIDC feedback authorization", () => {
       canChangeStatus: false,
     });
 
+    expect((await handler.PATCH(patchRequest(aliceRecord.id, alice, "other-project"))).status).toBe(404);
     expect((await handler.PATCH(patchRequest(aliceRecord.id, alice))).status).toBe(403);
     expect((await handler.DELETE(deleteRequest(bobRecord.id, alice))).status).toBe(403);
     expect((await handler.DELETE(deleteRequest(legacyRecord.id, alice))).status).toBe(403);
@@ -411,6 +412,11 @@ describe("OIDC feedback authorization", () => {
     const member = bearer(await signToken({ subject: "member-a", roles: ["member"] }));
     const created = await handler.POST(postRequest({ ...validPayloadNoAnnotations, clientId: "custom-store" }, member));
     const record = (await created.json()) as WireFeedback;
+    const memberList = (await (await handler.GET(getRequest(member))).json()) as WireList;
+    expect(memberList.feedbacks.find((feedback) => feedback.id === record.id)?.permissions).toEqual({
+      canDelete: false,
+      canChangeStatus: false,
+    });
     expect((await handler.DELETE(deleteRequest(record.id, member))).status).toBe(403);
   });
 });

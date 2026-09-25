@@ -778,6 +778,7 @@ export function createSitepingHandler({
     const canManage = principal?.isAdmin === true;
     const ownsFeedback =
       principal?.kind === "oidc" &&
+      typeof store.verifyFeedbackOwner === "function" &&
       feedback.ownerIssuer === principal.issuer &&
       feedback.ownerSubject === principal.subject;
     return { canDelete: canManage || ownsFeedback, canChangeStatus: canManage };
@@ -986,9 +987,6 @@ export function createSitepingHandler({
       const authentication = await authenticate(request, "PATCH");
       if ("error" in authentication) return withCors(authentication.error, corsHeaders);
       const principal = authentication.principal;
-      if (oidcVerifier && principal?.isAdmin !== true) {
-        return withCors(Response.json({ error: "Forbidden" }, { status: 403 }), corsHeaders);
-      }
 
       const body = await request.json().catch(() => null);
       if (!body) {
@@ -1010,6 +1008,9 @@ export function createSitepingHandler({
           if (!owns) {
             return withCors(Response.json({ error: "Feedback not found" }, { status: 404 }), corsHeaders);
           }
+        }
+        if (oidcVerifier && principal?.isAdmin !== true) {
+          return withCors(Response.json({ error: "Forbidden" }, { status: 403 }), corsHeaders);
         }
 
         // resolvedAt is the CLOSURE timestamp — set when the feedback enters

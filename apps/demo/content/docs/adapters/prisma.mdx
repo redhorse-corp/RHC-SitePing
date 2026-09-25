@@ -32,7 +32,7 @@ Any framework that speaks Web `Request`/`Response` (Hono, Remix, SvelteKit, …)
 | `apiKey` | `string` | — | Enables Bearer auth. Requests send `Authorization: Bearer <key>` |
 | `oidc` | `OidcOptions` | — | Verify signed JWTs using `issuer`, `audience` and `jwksUri`; `rolesClaim` defaults to `roles`, `adminRoles` to `["admin"]` |
 | `publicEndpoints` | `SitepingHttpMethod[]` | `["POST", "OPTIONS"]` when `apiKey` or `oidc` is set | Methods that allow anonymous requests. **Passing a value replaces the default**; OIDC still protects PATCH and DELETE |
-| `requireAuthForDestructive` | `boolean` | `true` | Legacy no-credential fallback. Production defaults to requiring `apiKey` or `oidc`; disable only behind trusted middleware (OIDC rejects `false`) |
+| `requireAuthForDestructive` | `boolean` | `true` | Legacy switch for unauthenticated PATCH/DELETE. In production, `true` requires `apiKey` or OIDC at startup; `false` permits startup without either and is safe only behind trusted auth middleware. OIDC rejects `false` |
 | `redactUnauthenticatedEmails` | `boolean` | `true` | See [what responses expose](#what-responses-expose) |
 | `allowedOrigins` | `string[]` | — | Exact-match CORS allowlist. **No wildcard support** — `["*"]` matches nothing; unset means no CORS headers at all |
 | `screenshotStorage` | `ScreenshotStorage` | — | Upload screenshots somewhere real instead of inlining data URLs. Ignored when you pass a custom `store` |
@@ -50,7 +50,7 @@ Any framework that speaks Web `Request`/`Response` (Hono, Remix, SvelteKit, …)
 ### What responses expose
 
 - `clientId`, `ownerIssuer` and `ownerSubject` are stripped from every API response.
-- By default, `authorEmail` is blanked unless the request carries a valid API-key or OIDC bearer credential; `redactUnauthenticatedEmails: false` opts out. Anonymous public POST responses are redacted too.
+- By default, `authorEmail` is blanked in unauthenticated GET/PATCH responses; `redactUnauthenticatedEmails: false` opts out. POST responses echo the submitted email, including anonymous public submissions.
 
 ### Configure OIDC
 
@@ -74,7 +74,7 @@ One endpoint, five methods. All bodies are JSON.
 
 | Method | Purpose | Success |
 |---|---|---|
-| `POST` | Create feedback (widget submissions) | `201` + record. A replayed `clientId` returns the existing record instead of failing (and never notifies webhooks twice); a `clientId` already used by **another** project is refused with `409` |
+| `POST` | Create feedback (widget submissions) | `201` + record. With OIDC, a replayed `clientId` returns the existing record only to its owner or an administrator; others get `409`. Replays do not notify webhooks twice. A `clientId` used by another project gets `409` |
 | `GET` | List feedback | `200` + `{ feedbacks, total }`; with OIDC also includes `permissions: { canManage }` on the list and `permissions: { canChangeStatus, canDelete }` on each record |
 | `PATCH` | Change a status | `200` + updated record |
 | `DELETE` | Delete one or all | `200` + `{ deleted: true }` |

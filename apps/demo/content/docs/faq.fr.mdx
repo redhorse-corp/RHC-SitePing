@@ -32,7 +32,7 @@ Le commentaire, son type et son statut, la page (le **chemin** de l'URL uniqueme
 
 ## N'importe qui peut-il lire mon API de feedback ?
 
-Sans `apiKey` ni OIDC, les lectures sont publiques par défaut. Avec OIDC, GET exige un bearer sauf s'il est explicitement public. Avec une API key, seules les méthodes de `publicEndpoints` sont anonymes par défaut (`POST` et `OPTIONS`). Les e-mails des auteurs sont masqués pour les appelants non authentifiés, et `clientId` ainsi que les identifiants des propriétaires ne sont jamais exposés. PATCH et DELETE suivent la politique de rôles/propriété API key ou OIDC ; en production, `apiKey` ou OIDC est requis par défaut, sauf si le handler est derrière votre propre middleware d'auth. [Détails](/fr/docs/adapters/prisma#le-modèle-de-sécurité-franchement).
+Sans `apiKey` ni OIDC, les lectures sont publiques par défaut. Avec OIDC, GET exige un bearer sauf s'il est explicitement public. Avec une API key, seules les méthodes de `publicEndpoints` sont anonymes par défaut (`POST` et `OPTIONS`). Les réponses GET/PATCH non authentifiées masquent les e-mails des auteurs ; les POST publics renvoient l'e-mail soumis. `clientId` et les identifiants des propriétaires ne sont jamais exposés. PATCH et DELETE suivent la politique de rôles/propriété API key ou OIDC ; en production, ne définissez `requireAuthForDestructive: false` que si le handler est derrière votre propre middleware d'auth de confiance.
 
 ## Que se passe-t-il si le réseau lâche en plein envoi ?
 

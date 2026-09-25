@@ -36,6 +36,8 @@ model SitepingFeedback {
   authorName    String
   authorEmail   String
   clientId      String              @unique
+  ownerIssuer   String?
+  ownerSubject  String?
   resolvedAt    DateTime?
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
@@ -190,6 +192,8 @@ model SitepingFeedback {
   authorName    String
   authorEmail   String
   clientId      String              @unique
+  ownerIssuer   String?
+  ownerSubject  String?
   resolvedAt    DateTime?
   createdAt     DateTime            @default(now())
   annotations   SitepingAnnotation[]
