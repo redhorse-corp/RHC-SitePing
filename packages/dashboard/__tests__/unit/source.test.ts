@@ -96,6 +96,18 @@ describe("createEndpointSource — list()", () => {
     const page = await source.list({ projectName: "demo" });
     expect(page.feedbacks[0]?.resolvedAt).toBeNull();
   });
+
+  it("preserves list-level capability metadata and leaves missing metadata undefined", async () => {
+    const query = { projectName: "demo" };
+    const enabled = createEndpointSource({
+      endpoint: ENDPOINT,
+      fetchFn: jsonFetch({ feedbacks: [], total: 0, permissions: { canManage: false } }),
+    });
+    const legacy = createEndpointSource({ endpoint: ENDPOINT, fetchFn: jsonFetch({ feedbacks: [], total: 0 }) });
+
+    expect((await enabled.list(query)).canManage).toBe(false);
+    expect((await legacy.list(query)).canManage).toBeUndefined();
+  });
 });
 
 describe("createEndpointSource — auth & headers", () => {

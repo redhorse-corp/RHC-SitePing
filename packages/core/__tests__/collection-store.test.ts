@@ -124,3 +124,31 @@ describe("createCollectionStore — snapshot immutability", () => {
     expect((await store.getFeedbacks({ projectName: "p" })).total).toBe(1);
   });
 });
+describe("createCollectionStore — trusted feedback owner", () => {
+  it("normalizes absent owners and verifies the issuer-subject pair", async () => {
+    let records: FeedbackRecord[] = [];
+    let id = 0;
+    const store = createCollectionStore({
+      load: () => records,
+      persist: (next) => {
+        records = next;
+      },
+      generateId: () => `owner-${++id}`,
+    });
+    const anonymous = await store.createFeedback(input("anonymous"));
+    const owned = await store.createFeedback({
+      ...input("owned"),
+      owner: { issuer: "https://issuer.example", subject: "user-123" },
+    });
+
+    expect(anonymous.ownerIssuer).toBeNull();
+    expect(anonymous.ownerSubject).toBeNull();
+    expect(owned.ownerIssuer).toBe("https://issuer.example");
+    expect(owned.ownerSubject).toBe("user-123");
+    await expect(store.verifyFeedbackOwner(owned.id, "https://issuer.example", "user-123")).resolves.toBe(true);
+    await expect(store.verifyFeedbackOwner(owned.id, "https://other.example", "user-123")).resolves.toBe(false);
+    await expect(store.verifyFeedbackOwner(owned.id, "https://issuer.example", "other-user")).resolves.toBe(false);
+    await expect(store.verifyFeedbackOwner(anonymous.id, "https://issuer.example", "user-123")).resolves.toBe(false);
+    await expect(store.verifyFeedbackOwner("missing", "https://issuer.example", "user-123")).resolves.toBe(false);
+  });
+});

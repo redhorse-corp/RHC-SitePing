@@ -580,6 +580,39 @@ describe("DetailView", () => {
       });
     });
 
+    it("hides denied actions and ignores stale buttons after permissions change", async () => {
+      setup.view.show(makeFeedback(), 1);
+      const resolveBtn = setup.view.element.querySelector<HTMLButtonElement>(".sp-detail-btn-resolve")!;
+      const deleteBtn = setup.view.element.querySelector<HTMLButtonElement>(".sp-detail-btn-delete")!;
+
+      setup.view.show(makeFeedback({ permissions: { canDelete: false, canChangeStatus: false } }), 1);
+      expect(setup.view.element.querySelector<HTMLButtonElement>(".sp-detail-btn-resolve")!.hidden).toBe(true);
+      expect(setup.view.element.querySelector<HTMLButtonElement>(".sp-detail-btn-delete")!.hidden).toBe(true);
+      expect(setup.view.element.querySelector<HTMLButtonElement>(".sp-detail-btn-resolve")!.style.display).toBe("none");
+      expect(setup.view.element.querySelector<HTMLButtonElement>(".sp-detail-btn-delete")!.style.display).toBe("none");
+
+      resolveBtn.click();
+      deleteBtn.click();
+
+      expect(setup.callbacks.onResolve).not.toHaveBeenCalled();
+      expect(setup.callbacks.onDelete).not.toHaveBeenCalled();
+    });
+
+    it("keeps owner deletion available when status changes are denied", async () => {
+      const fb = makeFeedback({ permissions: { canDelete: true, canChangeStatus: false } });
+      setup.view.show(fb, 1);
+
+      const resolveBtn = setup.view.element.querySelector<HTMLButtonElement>(".sp-detail-btn-resolve")!;
+      const deleteBtn = setup.view.element.querySelector<HTMLButtonElement>(".sp-detail-btn-delete")!;
+      expect(resolveBtn.hidden).toBe(true);
+      expect(deleteBtn.hidden).toBe(false);
+
+      resolveBtn.click();
+      deleteBtn.click();
+      await vi.waitFor(() => expect(setup.callbacks.onDelete).toHaveBeenCalledWith(fb));
+      expect(setup.callbacks.onResolve).not.toHaveBeenCalled();
+    });
+
     it("disables both action buttons and shows spinner during processing", async () => {
       const fb = makeFeedback();
       let resolveCallback!: () => void;

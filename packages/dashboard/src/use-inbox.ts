@@ -103,6 +103,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
   const [items, setItems] = useState<FeedbackRecord[]>([]);
   const [total, setTotal] = useState<number | null>(null);
   const [counts, setCounts] = useState<InboxState["counts"]>({});
+  const [canManage, setCanManage] = useState<InboxState["canManage"]>(undefined);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setErrorState] = useState<Error | null>(null);
@@ -198,6 +199,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       totalRef.current = page.total;
       setItems(page.feedbacks);
       setTotal(page.total);
+      setCanManage(page.canManage);
       setLoading(false);
     } catch (cause) {
       if (token !== tokenRef.current) return;
@@ -257,6 +259,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
       totalRef.current = page.total;
       setItems(nextItems);
       setTotal(page.total);
+      setCanManage(page.canManage);
     } catch (cause) {
       if (token !== tokenRef.current) return;
       const err = toError(cause);
@@ -550,6 +553,7 @@ export function useSitepingInbox(options: UseSitepingInboxOptions): InboxState {
     items,
     total,
     counts,
+    ...(canManage === undefined ? {} : { canManage }),
     loading,
     loadingMore,
     error,

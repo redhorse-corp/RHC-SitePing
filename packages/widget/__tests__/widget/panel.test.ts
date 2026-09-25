@@ -936,7 +936,11 @@ describe("Panel", () => {
 
     it("confirming delete all calls apiClient.deleteAllFeedbacks and reloads", async () => {
       const fb = makeFeedback({ id: "fb-1" });
-      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+      apiClient.getFeedbacks.mockResolvedValue({
+        feedbacks: [fb],
+        total: 1,
+        permissions: { canManage: true },
+      });
       apiClient.deleteAllFeedbacks.mockResolvedValue(undefined);
 
       await panel.open();
@@ -952,11 +956,32 @@ describe("Panel", () => {
       });
 
       const confirmBtn = shadow.querySelector<HTMLButtonElement>(".sp-btn-danger")!;
+      expect(deleteAllBtn.hidden).toBe(false);
+      expect(deleteAllBtn.style.display).toBe("");
       confirmBtn.click();
 
       await vi.waitFor(() => {
         expect(apiClient.deleteAllFeedbacks).toHaveBeenCalledWith("test-project");
       });
+    });
+
+    it("hides and guards delete-all when list permissions deny management", async () => {
+      const fb = makeFeedback({ id: "fb-1" });
+      apiClient.getFeedbacks.mockResolvedValue({
+        feedbacks: [fb],
+        total: 1,
+        permissions: { canManage: false },
+      });
+
+      await panel.open();
+
+      const deleteAllBtn = shadow.querySelector<HTMLButtonElement>(".sp-btn-delete-all")!;
+      expect(deleteAllBtn.hidden).toBe(true);
+      expect(deleteAllBtn.style.display).toBe("none");
+      deleteAllBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+      expect(shadow.querySelector(".sp-confirm-backdrop")).toBeNull();
+      expect(apiClient.deleteAllFeedbacks).not.toHaveBeenCalled();
     });
 
     it("cancelling delete all does not call API", async () => {
@@ -1523,6 +1548,45 @@ describe("Panel", () => {
       expect(apiClient.resolveFeedback).not.toHaveBeenCalled();
     });
 
+    it("R and D shortcuts cannot mutate feedback with explicit denials", async () => {
+      const fb = makeFeedback({ permissions: { canDelete: false, canChangeStatus: false } });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+
+      await panel.open();
+      stubScrollOnCards(shadow);
+
+      const resolveBtn = shadow.querySelector<HTMLButtonElement>(".sp-btn-resolve")!;
+      const deleteBtn = shadow.querySelector<HTMLButtonElement>(".sp-btn-delete")!;
+      expect(resolveBtn.hidden).toBe(true);
+      expect(deleteBtn.hidden).toBe(true);
+      expect(resolveBtn.style.display).toBe("none");
+      expect(deleteBtn.style.display).toBe("none");
+
+      resolveBtn.click();
+      deleteBtn.click();
+      shadow.dispatchEvent(new KeyboardEvent("keydown", { key: "j", bubbles: true }));
+      shadow.dispatchEvent(new KeyboardEvent("keydown", { key: "r", bubbles: true }));
+      shadow.dispatchEvent(new KeyboardEvent("keydown", { key: "d", bubbles: true }));
+
+      expect(apiClient.resolveFeedback).not.toHaveBeenCalled();
+      expect(apiClient.deleteFeedback).not.toHaveBeenCalled();
+    });
+
+    it("allows keyboard deletion of owned feedback but blocks status changes", async () => {
+      const fb = makeFeedback({ permissions: { canDelete: true, canChangeStatus: false } });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+      apiClient.deleteFeedback.mockResolvedValue(undefined);
+
+      await panel.open();
+      stubScrollOnCards(shadow);
+      shadow.dispatchEvent(new KeyboardEvent("keydown", { key: "j", bubbles: true }));
+      shadow.dispatchEvent(new KeyboardEvent("keydown", { key: "r", bubbles: true }));
+      shadow.dispatchEvent(new KeyboardEvent("keydown", { key: "d", bubbles: true }));
+
+      await vi.waitFor(() => expect(apiClient.deleteFeedback).toHaveBeenCalledWith("fb-1"));
+      expect(apiClient.resolveFeedback).not.toHaveBeenCalled();
+    });
+
     it("D key triggers delete on focused feedback", async () => {
       const fb = makeFeedback({ id: "fb-1" });
       apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
@@ -1664,6 +1728,52 @@ describe("Panel", () => {
       await vi.waitFor(() => {
         expect(errorListener).toHaveBeenCalledWith(expect.any(Error));
       });
+    });
+
+    it("hides bulk actions and performs no permitted subset for a mixed selection", async () => {
+      const allowed = makeFeedback({
+        id: "fb-allowed",
+        permissions: { canDelete: true, canChangeStatus: true },
+      });
+      const denied = makeFeedback({
+        id: "fb-denied",
+        permissions: { canDelete: false, canChangeStatus: false },
+      });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [allowed, denied], total: 2 });
+
+      await panel.open();
+      shadow.querySelector<HTMLElement>(".sp-bulk-select-all .sp-bulk-checkbox")!.click();
+
+      const resolveBtn = shadow.querySelector<HTMLButtonElement>(".sp-bulk-btn-resolve")!;
+      const deleteBtn = shadow.querySelector<HTMLButtonElement>(".sp-bulk-btn-delete")!;
+      expect(resolveBtn.hidden).toBe(true);
+      expect(deleteBtn.hidden).toBe(true);
+      expect(resolveBtn.style.display).toBe("none");
+      expect(deleteBtn.style.display).toBe("none");
+
+      resolveBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      deleteBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      expect(apiClient.resolveFeedback).not.toHaveBeenCalled();
+      expect(apiClient.deleteFeedback).not.toHaveBeenCalled();
+    });
+
+    it("keeps bulk delete for owned feedback while blocking bulk status changes", async () => {
+      const fb = makeFeedback({ permissions: { canDelete: true, canChangeStatus: false } });
+      apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });
+      apiClient.deleteFeedback.mockResolvedValue(undefined);
+
+      await panel.open();
+      shadow.querySelector<HTMLElement>(".sp-bulk-select-all .sp-bulk-checkbox")!.click();
+
+      const resolveBtn = shadow.querySelector<HTMLButtonElement>(".sp-bulk-btn-resolve")!;
+      const deleteBtn = shadow.querySelector<HTMLButtonElement>(".sp-bulk-btn-delete")!;
+      expect(resolveBtn.hidden).toBe(true);
+      expect(deleteBtn.hidden).toBe(false);
+      resolveBtn.click();
+      deleteBtn.click();
+
+      await vi.waitFor(() => expect(apiClient.deleteFeedback).toHaveBeenCalledWith("fb-1"));
+      expect(apiClient.resolveFeedback).not.toHaveBeenCalled();
     });
   });
 

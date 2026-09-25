@@ -2,7 +2,7 @@
 
 import type { FeedbackRecord } from "@siteping/core";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { SitepingInbox } from "../../src/components/inbox.js";
 import type { InboxCustomSourceOptions, SitepingInboxPresentationProps } from "../../src/types.js";
 import { makeDiagnostics, makeRecord, makeSource, REGION } from "../helpers.js";
@@ -62,8 +62,15 @@ type InboxOverrides = Partial<
   >
 >;
 
-function renderInbox(props: InboxOverrides = {}, records = seed()) {
+function renderInbox(props: InboxOverrides = {}, records = seed(), canManage?: boolean | (() => boolean)) {
   const source = makeSource(records);
+  if (canManage !== undefined) {
+    const list = source.list;
+    source.list = vi.fn(async (query: Parameters<typeof list>[0]) => ({
+      ...(await list(query)),
+      canManage: typeof canManage === "function" ? canManage() : canManage,
+    }));
+  }
   const utils = render(<SitepingInbox source={source} projects="demo" theme="dark" {...props} />);
   return { source, ...utils };
 }
@@ -183,6 +190,43 @@ describe("SitepingInbox — keyboard", () => {
     await waitFor(() => expect(listRows()).toHaveLength(3)); // o1 reinstated
   });
 
+  it("hides non-admin mutation controls and rejects status shortcuts while keeping filters", async () => {
+    const { source } = renderInbox({}, seed(), false);
+    const listbox = await ready();
+
+    expect(screen.getByRole("radiogroup", { name: "Filter by status" })).toBeTruthy();
+    fireEvent.keyDown(listbox, { key: "j" });
+    for (const key of ["e", "p", "x"]) fireEvent.keyDown(listbox, { key });
+    expect(source.setStatus).not.toHaveBeenCalled();
+    expect(listRows()).toHaveLength(3);
+
+    fireEvent.keyDown(listbox, { key: "Enter" });
+    const dialog = await screen.findByRole("dialog", { name: /Feedback details/ });
+    expect(dialog.querySelector(".spd-status-menu")).toBeNull();
+    expect(dialog.querySelector(".spd-danger-zone")).toBeNull();
+
+    fireEvent.keyDown(listbox, { key: "u" });
+    expect(source.setStatus).not.toHaveBeenCalled();
+  });
+
+  it("hides an existing undo affordance and denies u after permissions change", async () => {
+    let canManage = true;
+    const { source } = renderInbox({}, seed(), () => canManage);
+    const listbox = await ready();
+    fireEvent.keyDown(listbox, { key: "j" });
+    fireEvent.keyDown(listbox, { key: "e" });
+
+    expect(await screen.findByRole("button", { name: /Undo/ })).toBeTruthy();
+    expect(source.setStatus).toHaveBeenCalledTimes(1);
+
+    canManage = false;
+    fireEvent.keyDown(listbox, { key: "r" });
+    await waitFor(() => expect(screen.queryByRole("button", { name: /Undo/ })).toBeNull());
+    fireEvent.keyDown(listbox, { key: "u" });
+
+    expect(source.setStatus).toHaveBeenCalledTimes(1);
+  });
+
   it("p marks the focused row in progress and it leaves the open tab", async () => {
     renderInbox();
     const listbox = await ready();
@@ -204,8 +248,25 @@ describe("SitepingInbox — keyboard", () => {
     const listbox = await ready();
     fireEvent.keyDown(listbox, { key: "?" });
     const overlay = await screen.findByRole("dialog", { name: "Keyboard shortcuts" });
+
+    const keys = [...overlay.querySelectorAll(".spd-shortcut-keys")].map((element) => element.textContent);
+    expect(keys).toEqual(expect.arrayContaining(["e", "p", "x", "u"]));
     fireEvent.keyDown(overlay, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Keyboard shortcuts" })).toBeNull());
+  });
+
+  it("hides mutation shortcuts but keeps refresh and filters for non-admins", async () => {
+    renderInbox({}, seed(), false);
+    const listbox = await ready();
+    fireEvent.keyDown(listbox, { key: "?" });
+    const overlay = await screen.findByRole("dialog", { name: "Keyboard shortcuts" });
+    const keys = [...overlay.querySelectorAll(".spd-shortcut-keys")].map((element) => element.textContent);
+
+    expect(keys).not.toContain("e");
+    expect(keys).not.toContain("p");
+    expect(keys).not.toContain("x");
+    expect(keys).not.toContain("u");
+    expect(keys).toEqual(expect.arrayContaining(["r", "1–5"]));
   });
 
   it("number keys switch status tabs (4 → resolved)", async () => {

@@ -21,6 +21,8 @@ const FEEDBACK: FeedbackRecord = {
   authorName: "Alice",
   authorEmail: "alice@example.com",
   clientId: "client-uuid-1",
+  ownerIssuer: "https://issuer.example",
+  ownerSubject: "user-123",
   resolvedAt: null,
   createdAt: new Date("2026-05-14T10:00:00Z"),
   updatedAt: new Date("2026-05-14T10:00:00Z"),
@@ -69,12 +71,13 @@ describe("buildWebhookPayload", () => {
     expect(payload.embeds[0]?.color).toBe(0xef4444);
   });
 
-  it("returns the record minus clientId as generic payload", () => {
-    const { clientId: _clientId, ...expected } = FEEDBACK;
+  it("returns the record minus clientId and internal owner ids as generic payload", () => {
+    const { clientId: _clientId, ownerIssuer: _ownerIssuer, ownerSubject: _ownerSubject, ...expected } = FEEDBACK;
     const payload = buildWebhookPayload("generic", FEEDBACK);
     expect(payload).toEqual(expected);
-    // clientId is the browser-local dedup secret — it never leaves the server.
     expect("clientId" in payload).toBe(false);
+    expect("ownerIssuer" in payload).toBe(false);
+    expect("ownerSubject" in payload).toBe(false);
   });
 
   it("truncates excessively long messages for chat platforms", () => {

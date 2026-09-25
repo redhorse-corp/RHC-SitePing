@@ -487,6 +487,11 @@ export interface FeedbackCreateInput {
    * `FeedbackRecord.diagnostics` so reviewers can replay the context.
    */
   diagnostics?: DiagnosticsSnapshot | null | undefined;
+  /**
+   * Trusted actor identity set by the server adapter after token validation.
+   * Never populated from widget payloads.
+   */
+  owner?: { issuer: string; subject: string } | undefined;
 }
 
 /** Input for a single annotation when creating a feedback. */
@@ -588,6 +593,9 @@ export interface FeedbackRecord {
   viewport: string;
   userAgent: string;
   clientId: string;
+  /** Trusted OIDC actor identity; null for legacy and anonymous records. */
+  ownerIssuer: string | null;
+  ownerSubject: string | null;
   resolvedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -798,6 +806,11 @@ export interface SitepingStore {
    * handlers skip the ownership check and rely on `id` alone.
    */
   verifyProjectOwnership?(id: string, projectName: string): Promise<boolean>;
+  /**
+   * Optional trusted-owner check. HTTP handlers deny non-admin deletes when
+   * an adapter does not implement it.
+   */
+  verifyFeedbackOwner?(id: string, issuer: string, subject: string): Promise<boolean>;
 }
 
 /** Payload sent from the widget to the server when submitting feedback. */
@@ -954,16 +967,15 @@ export interface AnnotationPayload {
 // ---------------------------------------------------------------------------
 
 /**
- * Feedback record as returned by the API — derived from
- * {@link FeedbackRecord}: dates are serialized to ISO strings and `clientId`
- * is omitted (server-side dedup concern, never exposed on the wire). Adding
- * a field to `FeedbackRecord` updates this type automatically.
- *
- * Note: `authorEmail` may be an empty string — HTTP adapters redact it for
- * unauthenticated requests; the full value requires a Bearer-authenticated
- * request.
+ * Feedback record as returned by the API. Internal dedup and owner identity
+ * fields are omitted; capabilities are present only when authorization is
+ * enabled.
  */
-export type FeedbackResponse = Prettify<Serialized<Omit<FeedbackRecord, "clientId">>>;
+export type FeedbackResponse = Prettify<
+  Serialized<Omit<FeedbackRecord, "clientId" | "ownerIssuer" | "ownerSubject">> & {
+    permissions?: { canDelete: boolean; canChangeStatus: boolean };
+  }
+>;
 
 /**
  * Annotation record as returned by the API — {@link AnnotationRecord} with
@@ -975,4 +987,5 @@ export type AnnotationResponse = Prettify<Serialized<AnnotationRecord>>;
 export interface FeedbackResponseList {
   feedbacks: FeedbackResponse[];
   total: number;
+  permissions?: { canManage: boolean };
 }

@@ -15,6 +15,7 @@ interface DrawerProps {
   record: FeedbackRecord;
   /** True below the 960cq container breakpoint — drawer overlays the list with a backdrop and traps focus. */
   overlay: boolean;
+  canManage?: boolean | undefined;
   deepLinkParam: string;
   onClose: () => void;
   onChangeStatus: (id: string, status: FeedbackStatus) => void;
@@ -30,6 +31,7 @@ interface DrawerProps {
 export function Drawer({
   record,
   overlay,
+  canManage,
   deepLinkParam,
   onClose,
   onChangeStatus,
@@ -112,7 +114,9 @@ export function Drawer({
               #{shortId(record.id)}
             </span>
           </div>
-          <StatusMenu status={record.status} onSelect={(status) => onChangeStatus(record.id, status)} />
+          {canManage === false ? null : (
+            <StatusMenu status={record.status} onSelect={(status) => onChangeStatus(record.id, status)} />
+          )}
           <button
             ref={closeRef}
             type="button"
@@ -164,24 +168,26 @@ export function Drawer({
             </dd>
           </dl>
           {hasDiagnostics && diagnostics ? <Diagnostics diagnostics={diagnostics} /> : null}
-          <div className="spd-danger-zone">
-            {confirming ? (
-              <div className="spd-confirm">
-                <span>{t("drawer.deleteConfirm")}</span>
-                <button type="button" className="spd-btn-danger" onClick={() => onDelete(record.id)}>
-                  {t("drawer.deleteYes")}
+          {canManage === false ? null : (
+            <div className="spd-danger-zone">
+              {confirming ? (
+                <div className="spd-confirm">
+                  <span>{t("drawer.deleteConfirm")}</span>
+                  <button type="button" className="spd-btn-danger" onClick={() => onDelete(record.id)}>
+                    {t("drawer.deleteYes")}
+                  </button>
+                  <button type="button" className="spd-btn-ghost" onClick={() => setConfirming(false)}>
+                    {t("inbox.cancel")}
+                  </button>
+                </div>
+              ) : (
+                <button type="button" className="spd-btn-danger-ghost" onClick={() => setConfirming(true)}>
+                  <TrashIcon />
+                  {t("drawer.delete")}
                 </button>
-                <button type="button" className="spd-btn-ghost" onClick={() => setConfirming(false)}>
-                  {t("inbox.cancel")}
-                </button>
-              </div>
-            ) : (
-              <button type="button" className="spd-btn-danger-ghost" onClick={() => setConfirming(true)}>
-                <TrashIcon />
-                {t("drawer.delete")}
-              </button>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
         {deepLink ? (
           <div className="spd-drawer-foot">

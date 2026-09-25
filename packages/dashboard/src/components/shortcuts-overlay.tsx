@@ -5,15 +5,16 @@ import { useInboxUi } from "./context.js";
 const FOCUSABLE = 'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
 interface ShortcutsOverlayProps {
+  canManage?: boolean | undefined;
   onClose: () => void;
 }
 
 /**
- * Keyboard cheat sheet, toggled with "?". Modal: focus is trapped inside,
- * Esc or a click outside the card closes it, and Esc never bubbles to the
- * root (the overlay is always the topmost layer).
+ * Keyboard cheat sheet, toggled with "?". Mutation shortcuts are omitted
+ * when `canManage` is false; focus is trapped, and Escape never bubbles to
+ * the root.
  */
-export function ShortcutsOverlay({ onClose }: ShortcutsOverlayProps): ReactElement {
+export function ShortcutsOverlay({ canManage, onClose }: ShortcutsOverlayProps): ReactElement {
   const { t } = useInboxUi();
   const overlayRef = useRef<HTMLDivElement | null>(null);
 
@@ -55,10 +56,14 @@ export function ShortcutsOverlay({ onClose }: ShortcutsOverlayProps): ReactEleme
   const rows: Array<{ keys: string[]; label: string }> = [
     { keys: ["j", "k"], label: t("hints.navigate") },
     { keys: ["⏎"], label: t("hints.open") },
-    { keys: ["e"], label: t("hints.resolve") },
-    { keys: ["p"], label: t("hints.inProgress") },
-    { keys: ["x"], label: t("hints.wontFix") },
-    { keys: ["u"], label: t("inbox.undo") },
+    ...(canManage === false
+      ? []
+      : [
+          { keys: ["e"], label: t("hints.resolve") },
+          { keys: ["p"], label: t("hints.inProgress") },
+          { keys: ["x"], label: t("hints.wontFix") },
+          { keys: ["u"], label: t("inbox.undo") },
+        ]),
     { keys: ["r"], label: t("inbox.refresh") },
     { keys: ["/"], label: t("inbox.searchAria") },
     { keys: ["1–5"], label: t("inbox.statusFilter") },

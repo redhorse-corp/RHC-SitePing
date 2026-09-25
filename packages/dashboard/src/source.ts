@@ -1,6 +1,5 @@
 import {
   errorFromResponse,
-  type FeedbackPage,
   type FeedbackQuery,
   type FeedbackRecord,
   type FeedbackResponse,
@@ -11,7 +10,7 @@ import {
   type SitepingStore,
   toFeedbackUpdate,
 } from "@siteping/core";
-import type { EndpointSourceOptions, InboxSource } from "./types.js";
+import type { EndpointSourceOptions, InboxSource, InboxSourcePage } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Date revival — API responses carry ISO strings, the inbox works with Dates
@@ -22,6 +21,8 @@ function reviveRecord(response: FeedbackResponse): FeedbackRecord {
   return {
     ...response,
     // API responses omit clientId (server-side dedupe concern) — not needed for triage.
+    ownerIssuer: null,
+    ownerSubject: null,
     clientId: "",
     resolvedAt: response.resolvedAt === null ? null : new Date(response.resolvedAt),
     createdAt: new Date(response.createdAt),
@@ -76,7 +77,7 @@ export function createEndpointSource(options: EndpointSourceOptions): InboxSourc
   }
 
   return {
-    async list(query: FeedbackQuery): Promise<FeedbackPage> {
+    async list(query: FeedbackQuery): Promise<InboxSourcePage> {
       // Shared serializer from core — the previous local copy silently
       // dropped the `statuses` bucket filter.
       const params = feedbackQueryToSearchParams(query);
@@ -87,7 +88,11 @@ export function createEndpointSource(options: EndpointSourceOptions): InboxSourc
         headers: await buildHeaders(false),
       });
       const body = await parseJsonAs<FeedbackResponseList>(response);
-      return { feedbacks: body.feedbacks.map(reviveRecord), total: body.total };
+      return {
+        feedbacks: body.feedbacks.map(reviveRecord),
+        total: body.total,
+        ...(body.permissions === undefined ? {} : { canManage: body.permissions.canManage }),
+      };
     },
 
     async setStatus(id: string, projectName: string, status: FeedbackStatus): Promise<FeedbackRecord> {
@@ -122,7 +127,7 @@ export function createEndpointSource(options: EndpointSourceOptions): InboxSourc
  */
 export function createStoreSource(store: SitepingStore): InboxSource {
   return {
-    list(query: FeedbackQuery): Promise<FeedbackPage> {
+    list(query: FeedbackQuery) {
       return store.getFeedbacks(query);
     },
     setStatus(id: string, _projectName: string, status: FeedbackStatus): Promise<FeedbackRecord> {

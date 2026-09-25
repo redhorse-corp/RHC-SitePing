@@ -73,6 +73,9 @@ export class MemoryStore implements SitepingStore {
   verifyProjectOwnership(id: string, projectName: string): Promise<boolean> {
     return this.engine.verifyProjectOwnership(id, projectName);
   }
+  verifyFeedbackOwner(id: string, issuer: string, subject: string): Promise<boolean> {
+    return this.engine.verifyFeedbackOwner(id, issuer, subject);
+  }
 
   /** Remove all data from this store instance. */
   clear(): void {

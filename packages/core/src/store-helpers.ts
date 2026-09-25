@@ -90,6 +90,8 @@ export function buildFeedbackRecord(
     viewport: input.viewport,
     userAgent: input.userAgent,
     clientId: input.clientId,
+    ownerIssuer: input.owner?.issuer ?? null,
+    ownerSubject: input.owner?.subject ?? null,
     resolvedAt: null,
     createdAt: now,
     updatedAt: now,
@@ -131,10 +133,11 @@ export interface CollectionStoreBackend {
 }
 
 /**
- * A `SitepingStore` with the optional `verifyProjectOwnership` guaranteed —
- * what `createCollectionStore` returns.
+ * A `SitepingStore` with both optional ownership checks guaranteed — what
+ * `createCollectionStore` returns.
  */
-export type CollectionStore = SitepingStore & Required<Pick<SitepingStore, "verifyProjectOwnership">>;
+export type CollectionStore = SitepingStore &
+  Required<Pick<SitepingStore, "verifyProjectOwnership" | "verifyFeedbackOwner">>;
 
 /**
  * Build a fully conformant `SitepingStore` on top of a snapshot backend.
@@ -235,6 +238,12 @@ export function createCollectionStore(backend: CollectionStoreBackend): Collecti
     async verifyProjectOwnership(id: string, projectName: string): Promise<boolean> {
       const fb = (await backend.load()).find((f) => f.id === id);
       return fb !== undefined && fb.projectName === projectName;
+    },
+
+    async verifyFeedbackOwner(id: string, issuer: string, subject: string): Promise<boolean> {
+      // ponytail: O(n) snapshot scan; upgrade to issuer/subject indexes when owner-check volume warrants it.
+      const fb = (await backend.load()).find((f) => f.id === id);
+      return fb !== undefined && fb.ownerIssuer === issuer && fb.ownerSubject === subject;
     },
   };
 }

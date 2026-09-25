@@ -63,6 +63,7 @@ export class Panel {
   private feedbacks: FeedbackResponse[] = [];
   private currentPage = 1;
   private totalFeedbacks = 0;
+  private canManage: boolean | undefined;
   private isLoadingMore = false;
   private isOpen = false;
   private searchTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -189,6 +190,8 @@ export class Panel {
       {
         onResolve: (ids) => this.bulkResolve(ids),
         onDelete: (ids) => this.bulkDelete(ids),
+        canChangeStatus: (ids) => this.canMutateAll(ids, "canChangeStatus"),
+        canDelete: (ids) => this.canMutateAll(ids, "canDelete"),
       },
       this.t,
     );
@@ -539,8 +542,11 @@ export class Panel {
     if (!hasContent) this.showLoading();
 
     try {
-      const { feedbacks, total } = await this.client.getFeedbacks(this.projectName, options);
+      const response = await this.client.getFeedbacks(this.projectName, options);
       if (signal.aborted) return; // Stale response — a newer request superseded this one
+      const { feedbacks, total } = response;
+      this.canManage = response.permissions?.canManage;
+      this.updateDeleteAllVisibility();
       this.feedbacks = feedbacks;
       this.totalFeedbacks = total;
       this.stats.update(feedbacks, total);
@@ -592,13 +598,19 @@ export class Panel {
     if (loadMoreBtn) restoreBtn = setButtonLoading(loadMoreBtn);
 
     try {
-      const { feedbacks, total } = await this.client.getFeedbacks(this.projectName, options);
+      const response = await this.client.getFeedbacks(this.projectName, options);
       if (controller !== this.loadController) return; // Filter/search changed — discard stale page
+      const { feedbacks, total } = response;
+      if (response.permissions) {
+        this.canManage = response.permissions.canManage;
+        this.updateDeleteAllVisibility();
+      }
       this.currentPage = nextPage;
       this.totalFeedbacks = total;
       this.feedbacks = [...this.feedbacks, ...feedbacks];
-      this.stats.update(this.feedbacks, total);
       this.renderList();
+      if (this.bulk.hasSelection) this.bulk.selectAll(this.bulk.selectedIds);
+
       const markerFeedbacks = this.scopeAnnotationsByUrl
         ? this.feedbacks.filter((f) => f.url === scope.url)
         : this.feedbacks;
@@ -750,6 +762,8 @@ export class Panel {
     const footer = el("div", { class: "sp-card-footer" });
 
     const resolveBtn = document.createElement("button");
+    resolveBtn.hidden = feedback.permissions?.canChangeStatus === false;
+    resolveBtn.style.display = resolveBtn.hidden ? "none" : "";
     resolveBtn.className = "sp-btn-resolve";
     resolveBtn.dataset.action = "resolve";
     if (isResolved) {
@@ -766,6 +780,8 @@ export class Panel {
 
     const deleteBtn = document.createElement("button");
     deleteBtn.className = "sp-btn-delete";
+    deleteBtn.hidden = feedback.permissions?.canDelete === false;
+    deleteBtn.style.display = deleteBtn.hidden ? "none" : "";
     deleteBtn.dataset.action = "delete";
     deleteBtn.appendChild(parseSvg(ICON_TRASH));
     const deleteBtnLabel = document.createElement("span");
@@ -791,6 +807,7 @@ export class Panel {
   // ---------------------------------------------------------------------------
 
   private async bulkResolve(ids: string[]): Promise<void> {
+    if (!this.canMutateAll(ids, "canChangeStatus")) return;
     try {
       await Promise.all(ids.map((id) => this.client.resolveFeedback(id, true)));
       await this.loadFeedbacks();
@@ -801,6 +818,7 @@ export class Panel {
   }
 
   private async bulkDelete(ids: string[]): Promise<void> {
+    if (!this.canMutateAll(ids, "canDelete")) return;
     try {
       await Promise.all(ids.map((id) => this.client.deleteFeedback(id)));
       for (const id of ids) this.bus.emit("feedback:deleted", id);
@@ -811,16 +829,32 @@ export class Panel {
     }
   }
 
+  private canMutateAll(ids: string[], permission: "canChangeStatus" | "canDelete"): boolean {
+    return ids.every((id) => {
+      const feedback = this.feedbacks.find((item) => item.id === id);
+      return feedback !== undefined && feedback.permissions?.[permission] !== false;
+    });
+  }
+
   // ---------------------------------------------------------------------------
   // Existing methods (preserved)
   // ---------------------------------------------------------------------------
 
+  private canManageFeedbacks(): boolean {
+    return this.canManage !== false;
+  }
+
+  private updateDeleteAllVisibility(): void {
+    this.deleteAllBtn.hidden = !this.canManageFeedbacks();
+    this.deleteAllBtn.style.display = this.deleteAllBtn.hidden ? "none" : "";
+  }
   private async confirmDeleteAll(): Promise<void> {
+    if (!this.canManageFeedbacks()) return;
     const confirmed = await this.showConfirmDialog(
       this.t("panel.deleteAllConfirmTitle"),
       this.t("panel.deleteAllConfirmMessage"),
     );
-    if (!confirmed) return;
+    if (!confirmed || !this.canManageFeedbacks()) return;
 
     this.deleteAllBtn.disabled = true;
     try {
@@ -925,6 +959,7 @@ export class Panel {
   }
 
   private async deleteFeedback(feedback: FeedbackResponse, btn: HTMLButtonElement): Promise<void> {
+    if (feedback.permissions?.canDelete === false) return;
     this.pendingMutations.add(feedback.id);
     const restore = setButtonLoading(btn);
     try {
@@ -940,6 +975,7 @@ export class Panel {
   }
 
   private async toggleResolve(feedback: FeedbackResponse, btn: HTMLButtonElement): Promise<void> {
+    if (feedback.permissions?.canChangeStatus === false) return;
     this.pendingMutations.add(feedback.id);
     const restore = setButtonLoading(btn);
     try {

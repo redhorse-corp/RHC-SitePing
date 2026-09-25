@@ -39,6 +39,53 @@ function spyDelegate() {
 function prismaError(code: string): Error & { code: string } {
   return Object.assign(new Error(`Prisma ${code}`), { code });
 }
+describe("PrismaStore — trusted owner persistence", () => {
+  const input = {
+    projectName: "p",
+    type: "bug" as const,
+    message: "m",
+    status: "open" as const,
+    url: "/",
+    viewport: "1x1",
+    userAgent: "ua",
+    authorName: "a",
+    authorEmail: "a@example.com",
+    clientId: "c1",
+    annotations: [],
+  };
+
+  it("writes owner columns only for an authenticated owner", async () => {
+    const prisma = spyDelegate();
+    prisma.sitepingFeedback.create.mockResolvedValue({});
+    const store = new PrismaStore(prisma);
+
+    await store.createFeedback({ ...input, owner: { issuer: "https://issuer.example", subject: "user-123" } });
+    await store.createFeedback({ ...input, clientId: "c2" });
+
+    const ownedArgs = prisma.sitepingFeedback.create.mock.calls[0]?.[0];
+    const anonymousArgs = prisma.sitepingFeedback.create.mock.calls[1]?.[0];
+    expect(ownedArgs).toHaveProperty("data.ownerIssuer", "https://issuer.example");
+    expect(ownedArgs).toHaveProperty("data.ownerSubject", "user-123");
+    expect(anonymousArgs).not.toHaveProperty("data.ownerIssuer");
+    expect(anonymousArgs).not.toHaveProperty("data.ownerSubject");
+  });
+
+  it("selects only owner columns for the ownership check", async () => {
+    const prisma = spyDelegate();
+    prisma.sitepingFeedback.findUnique.mockResolvedValue({
+      ownerIssuer: "https://issuer.example",
+      ownerSubject: "user-123",
+    });
+
+    await expect(
+      new PrismaStore(prisma).verifyFeedbackOwner("fb-1", "https://issuer.example", "user-123"),
+    ).resolves.toBe(true);
+    expect(prisma.sitepingFeedback.findUnique).toHaveBeenCalledWith({
+      where: { id: "fb-1" },
+      select: { ownerIssuer: true, ownerSubject: true },
+    });
+  });
+});
 
 describe("PrismaStore — pagination clamp", () => {
   it("caps limit at 100 before calling findMany", async () => {

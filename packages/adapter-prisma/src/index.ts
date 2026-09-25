@@ -6,6 +6,7 @@ import {
   type FeedbackPayload,
   type FeedbackQuery,
   type FeedbackRecord,
+  type FeedbackResponse,
   type FeedbackStatus,
   type FeedbackType,
   type FeedbackUpdateInput,
@@ -19,6 +20,8 @@ import {
   StoreNotFoundError,
   toFeedbackUpdate,
 } from "@siteping/core";
+import type { OidcOptions, OidcPrincipal } from "./oidc.js";
+import { createOidcVerifier, OidcInvalidTokenError, OidcUnavailableError } from "./oidc.js";
 import {
   feedbackCreateSchema,
   feedbackDeleteSchema,
@@ -36,6 +39,7 @@ export {
   StoreNotFoundError,
   StorePersistenceError,
 } from "@siteping/core";
+export type { OidcOptions } from "./oidc.js";
 export type { FeedbackDeleteInput, FeedbackPatchInput, GetQueryInput } from "./validation.js";
 
 /**
@@ -300,6 +304,9 @@ export class PrismaStore implements SitepingStore {
         userAgent: data.userAgent,
         authorName: data.authorName,
         authorEmail: data.authorEmail,
+        // Keep non-OIDC installs working against schemas that predate owner
+        // columns; OIDC deployments must sync and push before creating owners.
+        ...(data.owner ? { ownerIssuer: data.owner.issuer, ownerSubject: data.owner.subject } : {}),
         clientId: data.clientId,
         annotations: {
           create: data.annotations.map((ann) => ({
@@ -499,8 +506,17 @@ export class PrismaStore implements SitepingStore {
     const record = (await this.prisma.sitepingFeedback.findUnique({
       where: { id },
       // Only need projectName for the check — skip annotations
+      select: { projectName: true },
     })) as { projectName: string } | null;
     return record !== null && record.projectName === projectName;
+  }
+
+  async verifyFeedbackOwner(id: string, issuer: string, subject: string): Promise<boolean> {
+    const record = (await this.prisma.sitepingFeedback.findUnique({
+      where: { id },
+      select: { ownerIssuer: true, ownerSubject: true },
+    })) as { ownerIssuer: string | null; ownerSubject: string | null } | null;
+    return record?.ownerIssuer === issuer && record.ownerSubject === subject;
   }
 }
 
@@ -516,28 +532,23 @@ export interface HandlerOptions {
   prisma?: SitepingPrismaClient;
   /** Abstract store — when provided, takes precedence over `prisma`. */
   store?: SitepingStore;
+  /** Optional signed-JWT validation and role policy for one OIDC issuer. */
+  oidc?: OidcOptions;
   /**
    * Optional storage backend for screenshots. Used only with `prisma`
-   * (ignored when a custom `store` is passed — that store is responsible
-   * for its own screenshot strategy). Without a storage, the data URL is
-   * persisted inline on `Feedback.screenshotUrl` with a one-time warn.
+   * (ignored when a custom `store` is passed — that store owns its strategy).
    */
   screenshotStorage?: ScreenshotStorage;
   /**
-   * Optional API key for bearer-token authentication.
-   *
-   * - **When set:** every request not listed in `publicEndpoints` must include an
-   *   `Authorization: Bearer {apiKey}` header. Requests without a valid token
-   *   receive a 401 Unauthorized response.
-   * - **When not set:** the API is fully public — anyone can create, read,
-   *   update, and delete feedbacks (including destructive DELETE operations).
-   * - **Recommendation:** always set `apiKey` in production environments.
+   * Optional shared bearer API key. A valid key is an administrator principal,
+   * including when OIDC is also configured.
    */
   apiKey?: string | undefined;
   /**
-   * HTTP methods that don't require API key authentication.
-   * Defaults to `['POST', 'OPTIONS']` when `apiKey` is set — POST must stay open
-   * because the browser widget submits feedback from unauthenticated contexts.
+   * HTTP methods that may be accessed without credentials.
+   * Defaults to `["POST", "OPTIONS"]` when either `apiKey` or `oidc` is set.
+   * With OIDC enabled, GET remains authenticated unless explicitly listed;
+   * PATCH and DELETE still enforce OIDC roles and ownership.
    */
   publicEndpoints?: ReadonlyArray<SitepingHttpMethod>;
   /** Allowed CORS origins — when set, validates the Origin header */
@@ -551,30 +562,16 @@ export interface HandlerOptions {
    */
   caseInsensitiveSearch?: boolean;
   /**
-   * Whether destructive endpoints (DELETE, PATCH) require `apiKey`.
-   *
-   * Defaults to `true` and intentionally cannot be disabled in production:
-   * - `NODE_ENV === "production"` without `apiKey` throws at startup. The
-   *   factory refuses to return an unauthenticated destructive surface.
-   * - `NODE_ENV !== "production"` without `apiKey` keeps the handler running
-   *   for local dev/tests, but DELETE/PATCH return 401 until you set
-   *   `apiKey` or explicitly opt out with `requireAuthForDestructive: false`.
-   *
-   * Set to `false` only when you wrap `createSitepingHandler` in your own
-   * auth middleware (session, OAuth, etc.) and want SitePing to stay open.
+   * Legacy no-OIDC fallback controlling whether PATCH and DELETE require an
+   * API key when none is configured. Defaults to `true`; production requires
+   * an API key or OIDC. Setting this to `false` is rejected when OIDC is enabled.
    */
   requireAuthForDestructive?: boolean;
   /**
-   * Blank `authorEmail` in GET/PATCH responses to requests that do not carry
-   * a valid `Authorization: Bearer <apiKey>` header. Defaults to `true`:
-   * reviewer emails are PII and the widget needs GET to be reachable, so an
-   * unauthenticated response must not enumerate them (issue #105).
-   *
-   * Set to `false` ONLY when the handler sits behind your own auth layer
-   * that covers GET as well (e.g. `requireAuthForDestructive: false` behind
-   * session middleware) — the handler cannot see that layer, and without it
-   * every visitor who can reach the endpoint can read reviewer emails.
-   * `clientId` is stripped from responses regardless of this option.
+   * Blank `authorEmail` in GET/PATCH responses without an authenticated
+   * principal. Defaults to `true`; valid API keys and OIDC tokens can see it.
+   * Set to `false` to disable redaction. Client and owner identifiers are
+   * always omitted from API responses.
    */
   redactUnauthenticatedEmails?: boolean;
   /**
@@ -599,6 +596,9 @@ export interface SitepingHandler {
   PATCH: (request: Request) => Promise<Response>;
   DELETE: (request: Request) => Promise<Response>;
 }
+type RequestPrincipal = (OidcPrincipal & { kind: "oidc" }) | { kind: "apiKey"; isAdmin: true };
+type AuthenticationResult = { principal: RequestPrincipal | null } | { error: Response };
+const DEFAULT_PUBLIC_ENDPOINTS = ["POST", "OPTIONS"] as const satisfies readonly SitepingHttpMethod[];
 
 // ---------------------------------------------------------------------------
 // CORS helpers
@@ -670,9 +670,16 @@ function safeCompare(a: string, b: string): boolean {
  * `authorEmail` is PII: blanked unless the requester is Bearer-authenticated.
  * Never mutates the input — webhooks receive the same record object.
  */
-function toWireFeedback(feedback: FeedbackRecord, includeEmail: boolean): Omit<FeedbackRecord, "clientId"> {
-  const { clientId: _clientId, ...wire } = feedback;
-  return includeEmail ? wire : { ...wire, authorEmail: "" };
+function toWireFeedback(
+  feedback: FeedbackRecord,
+  includeEmail: boolean,
+  permissions?: FeedbackResponse["permissions"],
+): Omit<FeedbackRecord, "clientId" | "ownerIssuer" | "ownerSubject"> & {
+  permissions?: NonNullable<FeedbackResponse["permissions"]>;
+} {
+  const { clientId: _clientId, ownerIssuer: _ownerIssuer, ownerSubject: _ownerSubject, ...wire } = feedback;
+  const response = includeEmail ? wire : { ...wire, authorEmail: "" };
+  return permissions === undefined ? response : { ...response, permissions };
 }
 
 /**
@@ -708,20 +715,24 @@ export function createSitepingHandler({
   store: providedStore,
   screenshotStorage,
   apiKey,
-  publicEndpoints = apiKey ? ["POST", "OPTIONS"] : undefined,
+  publicEndpoints,
   allowedOrigins,
   caseInsensitiveSearch,
   requireAuthForDestructive = true,
   redactUnauthenticatedEmails = true,
+  oidc,
   webhooks,
 }: HandlerOptions): SitepingHandler {
   if (!providedStore && !prisma) {
     throw new Error("[siteping] createSitepingHandler requires either `store` or `prisma`.");
   }
+  if (oidc && requireAuthForDestructive === false) {
+    throw new Error("[siteping] requireAuthForDestructive cannot be disabled when OIDC authorization is enabled.");
+  }
 
-  // Refuse to expose destructive endpoints publicly in production. Without
-  // this guard, anyone could `DELETE { deleteAll: true }` against the API.
-  if (!apiKey && requireAuthForDestructive && process.env.NODE_ENV === "production") {
+  // Refuse to expose destructive endpoints publicly in production unless OIDC
+  // or an API key establishes the handler's administrative principal.
+  if (!apiKey && !oidc && requireAuthForDestructive && process.env.NODE_ENV === "production") {
     throw new Error(
       "[siteping] adapter-prisma: apiKey is required in production. " +
         "Set `apiKey` to enable destructive endpoints, or pass " +
@@ -729,7 +740,7 @@ export function createSitepingHandler({
     );
   }
 
-  // Safe: the throw above guarantees at least one is defined
+  const oidcVerifier = oidc ? createOidcVerifier(oidc) : null;
   const store: SitepingStore =
     providedStore ??
     new PrismaStore(prisma as NonNullable<typeof prisma>, {
@@ -737,7 +748,10 @@ export function createSitepingHandler({
       ...(typeof caseInsensitiveSearch === "boolean" ? { caseInsensitiveSearch } : {}),
     });
 
-  const publicMethods: ReadonlySet<SitepingHttpMethod> | null = publicEndpoints ? new Set(publicEndpoints) : null;
+  const effectivePublicEndpoints = publicEndpoints ?? (apiKey || oidc ? DEFAULT_PUBLIC_ENDPOINTS : undefined);
+  const publicMethods: ReadonlySet<SitepingHttpMethod> | null = effectivePublicEndpoints
+    ? new Set(effectivePublicEndpoints)
+    : null;
 
   // Normalise the webhook config to an array once so every POST avoids the
   // allocation. Empty array short-circuits `dispatchWebhooks` cheaply.
@@ -748,9 +762,8 @@ export function createSitepingHandler({
     : [];
 
   /**
-   * True iff `apiKey` is configured AND the request carries a matching Bearer
-   * token. Distinct from `authenticate`: a valid token on a public method still
-   * counts as authenticated here (drives PII redaction, not access control).
+   * True iff a configured API key matches exactly. It remains an administrator
+   * credential when OIDC is also enabled.
    */
   function isBearerAuthenticated(request: Request): boolean {
     if (!apiKey) return false;
@@ -758,26 +771,60 @@ export function createSitepingHandler({
     return header !== null && safeCompare(header, `Bearer ${apiKey}`);
   }
 
-  /** Whether this request may see `authorEmail` (see `redactUnauthenticatedEmails`). */
-  function emailPermitted(request: Request): boolean {
-    return !redactUnauthenticatedEmails || isBearerAuthenticated(request);
+  function feedbackPermissions(
+    feedback: FeedbackRecord,
+    principal: RequestPrincipal | null,
+  ): NonNullable<FeedbackResponse["permissions"]> {
+    const canManage = principal?.isAdmin === true;
+    const ownsFeedback =
+      principal?.kind === "oidc" &&
+      feedback.ownerIssuer === principal.issuer &&
+      feedback.ownerSubject === principal.subject;
+    return { canDelete: canManage || ownsFeedback, canChangeStatus: canManage };
   }
 
-  /** Verify Bearer token when apiKey is configured. Skips methods listed in `publicEndpoints`. */
-  function authenticate(request: Request, method: SitepingHttpMethod): Response | null {
-    if (!apiKey) {
-      // No apiKey + destructive method + guard enabled → reject. GET/POST/OPTIONS
-      // stay open by default so the widget keeps working in dev without config.
-      if (requireAuthForDestructive && (method === "DELETE" || method === "PATCH")) {
-        return Response.json({ error: "apiKey required for destructive operations" }, { status: 401 });
+  /** Whether this request may see `authorEmail` (see `redactUnauthenticatedEmails`). */
+  function emailPermitted(request: Request, principal: RequestPrincipal | null): boolean {
+    if (!redactUnauthenticatedEmails) return true;
+    return oidcVerifier ? principal !== null : isBearerAuthenticated(request);
+  }
+
+  async function authenticate(request: Request, method: SitepingHttpMethod): Promise<AuthenticationResult> {
+    if (oidcVerifier) {
+      const authorization = request.headers.get("Authorization");
+      if (authorization !== null) {
+        if (isBearerAuthenticated(request)) return { principal: { kind: "apiKey", isAdmin: true } };
+        const token = /^Bearer\s+([^\s]+)$/i.exec(authorization)?.[1];
+        if (!token) return { error: Response.json({ error: "Unauthorized" }, { status: 401 }) };
+
+        try {
+          return { principal: { kind: "oidc", ...(await oidcVerifier(token)) } };
+        } catch (error) {
+          if (error instanceof OidcUnavailableError) {
+            return { error: Response.json({ error: "Authentication service unavailable" }, { status: 503 }) };
+          }
+          if (error instanceof OidcInvalidTokenError) {
+            return { error: Response.json({ error: "Unauthorized" }, { status: 401 }) };
+          }
+          return { error: Response.json({ error: "Authentication failed" }, { status: 500 }) };
+        }
       }
-      return null;
+      if (!publicMethods?.has(method) || method === "PATCH" || method === "DELETE") {
+        return { error: Response.json({ error: "Unauthorized" }, { status: 401 }) };
+      }
+      return { principal: null };
     }
-    if (publicMethods?.has(method)) return null;
-    if (!isBearerAuthenticated(request)) {
-      return Response.json({ error: "Unauthorized" }, { status: 401 });
+
+    if (apiKey) {
+      if (isBearerAuthenticated(request)) return { principal: { kind: "apiKey", isAdmin: true } };
+      if (publicMethods?.has(method)) return { principal: null };
+      return { error: Response.json({ error: "Unauthorized" }, { status: 401 }) };
     }
-    return null;
+
+    if (requireAuthForDestructive && (method === "DELETE" || method === "PATCH")) {
+      return { error: Response.json({ error: "apiKey required for destructive operations" }, { status: 401 }) };
+    }
+    return { principal: null };
   }
 
   return {
@@ -793,8 +840,9 @@ export function createSitepingHandler({
 
     POST: async (request: Request): Promise<Response> => {
       const corsHeaders = buildCorsHeaders(request, allowedOrigins);
-      const authError = authenticate(request, "POST");
-      if (authError) return withCors(authError, corsHeaders);
+      const authentication = await authenticate(request, "POST");
+      if ("error" in authentication) return withCors(authentication.error, corsHeaders);
+      const principal = authentication.principal;
       const body = await request.json().catch(() => null);
       if (!body) {
         return withCors(Response.json({ error: "Invalid JSON" }, { status: 400 }), corsHeaders);
@@ -813,22 +861,30 @@ export function createSitepingHandler({
       }
 
       /**
-       * Respond to a create that resolved to `feedback`. A clientId is unique
-       * across the whole store, so a replay that resolves to another
-       * project's record is a boundary violation, not a dedup: refuse it
-       * rather than hand that record (email included) to a request scoped to
-       * a different project. Email stays intact otherwise: the requester
-       * supplied it (fresh insert) or proved ownership by presenting the
-       * clientId (replay).
+       * Project mismatches stay indistinguishable from missing records. A
+       * replay under OIDC also requires the original owner or an administrator.
        */
-      const created = (feedback: FeedbackRecord): Response => {
+      const created = (feedback: FeedbackRecord, replay = false): Response => {
         if (feedback.projectName !== data.projectName) {
           return withCors(
             Response.json({ error: "clientId already used by another project" }, { status: 409 }),
             corsHeaders,
           );
         }
-        return withCors(Response.json(toWireFeedback(feedback, true), { status: 201 }), corsHeaders);
+        if (
+          replay &&
+          oidcVerifier &&
+          principal?.isAdmin !== true &&
+          !(
+            principal?.kind === "oidc" &&
+            feedback.ownerIssuer === principal.issuer &&
+            feedback.ownerSubject === principal.subject
+          )
+        ) {
+          return withCors(Response.json({ error: "clientId already used" }, { status: 409 }), corsHeaders);
+        }
+        const permissions = oidcVerifier ? feedbackPermissions(feedback, principal) : undefined;
+        return withCors(Response.json(toWireFeedback(feedback, true, permissions), { status: 201 }), corsHeaders);
       };
 
       try {
@@ -837,7 +893,7 @@ export function createSitepingHandler({
         // from a fresh insert afterwards, and a replayed submission must not
         // notify the webhooks a second time.
         const replayed = await store.findByClientId(data.clientId);
-        if (replayed) return created(replayed);
+        if (replayed) return created(replayed, true);
 
         const feedback = await store.createFeedback({
           projectName: data.projectName,
@@ -851,6 +907,7 @@ export function createSitepingHandler({
           authorName: data.authorName,
           authorEmail: data.authorEmail,
           clientId: data.clientId,
+          ...(principal?.kind === "oidc" ? { owner: { issuer: principal.issuer, subject: principal.subject } } : {}),
           annotations: data.annotations.map(flattenAnnotation),
           screenshotDataUrl: data.screenshotDataUrl ?? null,
           screenshotRegion: data.screenshotRegion ?? null,
@@ -870,7 +927,7 @@ export function createSitepingHandler({
         // check above and the insert. The presenter still owns the record.
         if (isStoreDuplicate(error)) {
           const existing = await store.findByClientId(data.clientId);
-          if (existing) return created(existing);
+          if (existing) return created(existing, true);
         }
 
         const message = actionableErrorMessage(error);
@@ -881,8 +938,9 @@ export function createSitepingHandler({
 
     GET: async (request: Request): Promise<Response> => {
       const corsHeaders = buildCorsHeaders(request, allowedOrigins);
-      const authError = authenticate(request, "GET");
-      if (authError) return withCors(authError, corsHeaders);
+      const authentication = await authenticate(request, "GET");
+      if ("error" in authentication) return withCors(authentication.error, corsHeaders);
+      const principal = authentication.principal;
 
       const url = new URL(request.url);
       const rawQuery: Record<string, string> = {};
@@ -907,11 +965,14 @@ export function createSitepingHandler({
       }
 
       try {
-        // GET can be public (no apiKey, or "GET" in publicEndpoints for widget
-        // hosts) — redact author emails unless the requester sent the key.
-        const authed = emailPermitted(request);
+        const includeEmail = emailPermitted(request, principal);
         const result = await store.getFeedbacks(parsed.data);
-        const body = { ...result, feedbacks: result.feedbacks.map((f) => toWireFeedback(f, authed)) };
+        const feedbacks = result.feedbacks.map((feedback) =>
+          toWireFeedback(feedback, includeEmail, oidcVerifier ? feedbackPermissions(feedback, principal) : undefined),
+        );
+        const body = oidcVerifier
+          ? { ...result, feedbacks, permissions: { canManage: principal?.isAdmin === true } }
+          : { ...result, feedbacks };
         return withCors(Response.json(body, { headers: { "Cache-Control": "private, max-age=5" } }), corsHeaders);
       } catch (error) {
         const message = actionableErrorMessage(error);
@@ -922,8 +983,12 @@ export function createSitepingHandler({
 
     PATCH: async (request: Request): Promise<Response> => {
       const corsHeaders = buildCorsHeaders(request, allowedOrigins);
-      const authError = authenticate(request, "PATCH");
-      if (authError) return withCors(authError, corsHeaders);
+      const authentication = await authenticate(request, "PATCH");
+      if ("error" in authentication) return withCors(authentication.error, corsHeaders);
+      const principal = authentication.principal;
+      if (oidcVerifier && principal?.isAdmin !== true) {
+        return withCors(Response.json({ error: "Forbidden" }, { status: 403 }), corsHeaders);
+      }
 
       const body = await request.json().catch(() => null);
       if (!body) {
@@ -952,9 +1017,12 @@ export function createSitepingHandler({
         // derivation lives here at the edge; stores persist what they're given.
         const feedback = await store.updateFeedback(parsed.data.id, toFeedbackUpdate(parsed.data.status));
 
-        // PATCH can be made public via publicEndpoints / requireAuthForDestructive:
-        // false — don't leak the author's email through the update response.
-        return withCors(Response.json(toWireFeedback(feedback, emailPermitted(request))), corsHeaders);
+        // A public legacy PATCH must not leak the author's email.
+        const permissions = oidcVerifier ? feedbackPermissions(feedback, principal) : undefined;
+        return withCors(
+          Response.json(toWireFeedback(feedback, emailPermitted(request, principal), permissions)),
+          corsHeaders,
+        );
       } catch (error) {
         if (isStoreNotFound(error)) {
           return withCors(Response.json({ error: "Feedback not found" }, { status: 404 }), corsHeaders);
@@ -967,8 +1035,9 @@ export function createSitepingHandler({
 
     DELETE: async (request: Request): Promise<Response> => {
       const corsHeaders = buildCorsHeaders(request, allowedOrigins);
-      const authError = authenticate(request, "DELETE");
-      if (authError) return withCors(authError, corsHeaders);
+      const authentication = await authenticate(request, "DELETE");
+      if ("error" in authentication) return withCors(authentication.error, corsHeaders);
+      const principal = authentication.principal;
 
       const body = await request.json().catch(() => null);
       if (!body) {
@@ -982,6 +1051,9 @@ export function createSitepingHandler({
 
       try {
         if ("deleteAll" in parsed.data) {
+          if (oidcVerifier && principal?.isAdmin !== true) {
+            return withCors(Response.json({ error: "Forbidden" }, { status: 403 }), corsHeaders);
+          }
           await store.deleteAllFeedbacks(parsed.data.projectName);
           return withCors(Response.json({ deleted: true }), corsHeaders);
         }
@@ -994,6 +1066,15 @@ export function createSitepingHandler({
           const owns = await store.verifyProjectOwnership(parsed.data.id, parsed.data.projectName);
           if (!owns) {
             return withCors(Response.json({ error: "Feedback not found" }, { status: 404 }), corsHeaders);
+          }
+        }
+        if (oidcVerifier && principal?.isAdmin !== true) {
+          const canDelete =
+            principal?.kind === "oidc" && store.verifyFeedbackOwner
+              ? await store.verifyFeedbackOwner(parsed.data.id, principal.issuer, principal.subject)
+              : false;
+          if (!canDelete) {
+            return withCors(Response.json({ error: "Forbidden" }, { status: 403 }), corsHeaders);
           }
         }
 

@@ -203,7 +203,16 @@ describe("LocalStorageStore specific", () => {
         ],
       });
       const raw = JSON.parse(localStorage.getItem("test_feedbacks")!) as Array<Record<string, unknown>>;
-      for (const key of ["urlPattern", "screenshotUrl", "screenshotRegion", "diagnostics"]) delete raw[0]![key];
+      for (const key of [
+        "urlPattern",
+        "screenshotUrl",
+        "screenshotRegion",
+        "diagnostics",
+        "ownerIssuer",
+        "ownerSubject",
+      ]) {
+        delete raw[0]![key];
+      }
       const annotations = raw[0]!.annotations as Array<Record<string, unknown>>;
       delete annotations[0]!.anchorKey;
       localStorage.setItem("test_feedbacks", JSON.stringify(raw));
@@ -216,6 +225,8 @@ describe("LocalStorageStore specific", () => {
       expect(revived.screenshotUrl).toBeNull();
       expect(revived.screenshotRegion).toBeNull();
       expect(revived.diagnostics).toBeNull();
+      expect(revived.ownerIssuer).toBeNull();
+      expect(revived.ownerSubject).toBeNull();
       expect(revived.annotations[0]!.anchorKey).toBeNull();
     });
 

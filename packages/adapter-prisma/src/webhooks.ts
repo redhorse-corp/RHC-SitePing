@@ -103,7 +103,7 @@ export interface DiscordWebhookPayload {
  * on every other output: it is the browser-local dedup secret and the POST
  * replay path hands the full record to whoever presents it.
  */
-export type GenericWebhookPayload = Omit<FeedbackRecord, "clientId">;
+export type GenericWebhookPayload = Omit<FeedbackRecord, "clientId" | "ownerIssuer" | "ownerSubject">;
 
 /** Mapping from webhook type to its concrete body shape. */
 export interface WebhookPayloadMap {
@@ -191,9 +191,9 @@ function buildDiscordPayload(feedback: FeedbackRecord): DiscordWebhookPayload {
   };
 }
 
-/** Generic JSON body — the record minus its `clientId`. */
+/** Generic JSON body — the record minus internal identifiers. */
 function buildGenericPayload(feedback: FeedbackRecord): GenericWebhookPayload {
-  const { clientId: _clientId, ...payload } = feedback;
+  const { clientId: _clientId, ownerIssuer: _ownerIssuer, ownerSubject: _ownerSubject, ...payload } = feedback;
   return payload;
 }
 

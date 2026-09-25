@@ -24,7 +24,7 @@ import type { InboxTheme } from "./theme.js";
  */
 export interface InboxSource {
   /** Paginated, filtered feedback query. Must resolve real `Date` objects on records. */
-  list(query: FeedbackQuery): Promise<FeedbackPage>;
+  list(query: FeedbackQuery): Promise<InboxSourcePage>;
   /**
    * Persist a status change. Closure semantics (`resolvedAt`) are derived at
    * this edge — callers only pass the target status.
@@ -32,6 +32,11 @@ export interface InboxSource {
   setStatus(id: string, projectName: string, status: FeedbackStatus): Promise<FeedbackRecord>;
   /** Permanently delete a feedback. */
   remove(id: string, projectName: string): Promise<void>;
+}
+
+/** Inbox-only page metadata; persisted core `FeedbackPage` stays authorization-free. */
+export interface InboxSourcePage extends FeedbackPage {
+  canManage?: boolean;
 }
 
 /** Options accepted by `createEndpointSource`. */
@@ -153,6 +158,8 @@ export interface InboxState {
   total: number | null;
   /** Per-status tab counts — refreshed with the list; adjusted locally on mutations. */
   counts: Partial<Record<"all" | FeedbackStatus, number>>;
+  /** List-level mutation capability; absent when the source has no authorization metadata. */
+  canManage?: boolean;
   /** True while page 1 is (re)loading. */
   loading: boolean;
   /** True while an additional page is loading. */
