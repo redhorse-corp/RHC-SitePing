@@ -365,8 +365,9 @@ export default function OidcDemo() {
               </span>
             </div>
             <p className="mt-4 text-sm leading-6 text-slate-600">
-              Use the Siteping button in the lower-right corner to annotate this page. Its feedback is stored in this
-              browser&apos;s localStorage.
+              Use the Siteping button in the lower-right to annotate this page; widget feedback and the sidebar&apos;s
+              Delete all action affect only this browser&apos;s localStorage. Anyone can clear these local
+              notes—Jane/Alex roles apply only to the server-side OIDC records.
             </p>
             <article className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-5">
               <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">Sprint review</p>
