@@ -23,7 +23,7 @@ Those role settings match the verifier options in `packages/adapter-prisma/src/o
 
 The existing `/demo` widget's `?mode=local` option uses `LocalStorageStore` in the browser and **does not make HTTP requests**. It cannot demonstrate server-side OIDC authorization. Its wiring is in `apps/demo/src/app/(site)/demo/playground.tsx` and `apps/demo/src/app/(site)/demo/inbox/demo-inbox.tsx`.
 
-The OIDC playground instead sends requests through its server-side, development-only `/api/oidc-demo` endpoint using an in-memory store. Its state is transient and is lost when the demo server restarts; it is separate from the browser's localStorage data. The regular HTTP widget path remains `/api/siteping` (`apps/demo/src/app/api/siteping/route.ts`).
+The OIDC playground uses the separate, development-only `/api/oidc-demo` endpoint with an in-memory store. The regular HTTP widget path remains `/api/siteping` (`apps/demo/src/app/api/siteping/route.ts`); it can read the optional `SITEPING_OIDC_*` variables documented in the [Prisma adapter guide](/docs/adapters/prisma#container-environment-for-the-demo-endpoint), and remains open if none are set.
 
 The running container's default access token has no `aud` claim. This page uses the mock server's optional login `claims` field to add the distinct API audience to the issued JWT before exchanging the authorization code; the API accepts only the returned `access_token`. The same mock claim may also appear on its ID token, which this page does not use.
 

@@ -58,7 +58,7 @@ function mountFeedback(config: SitepingHttpConfig) { /* endpoint guaranteed */ }
 | `enableRightClickComment` | `boolean` | `false` | Right-click anywhere to comment instantly — see [Right-click comments](/docs/widget/right-click) |
 | `captureDiagnostics` | `boolean` or object | `false` | Attach recent console entries (max 50) and network requests (max 20) to each feedback. `true` enables both; an object picks channels and limits |
 | `deepLink` | `boolean` or `{ param?: string }` | `false` | On first load, focus the feedback referenced by `?siteping=<id>` (or your custom param). Initial load only — for route changes, call `focusFeedback()` |
-| `identity` | `{ name, email }` | — | Pre-fill the author (SSO apps): skips the identity modal entirely, never persisted to localStorage |
+| `identity` | `{ name, email }` | — | Pre-fill author fields from the host app's session (e.g. SSO); skips the identity modal and is never persisted. It does not authenticate API requests—use `headers` for a bearer token. Read at init; remount after account changes |
 
 ## Page scoping
 

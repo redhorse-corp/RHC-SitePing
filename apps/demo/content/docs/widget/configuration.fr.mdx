@@ -58,7 +58,7 @@ function mountFeedback(config: SitepingHttpConfig) { /* endpoint garanti */ }
 | `enableRightClickComment` | `boolean` | `false` | Clic droit n'importe où pour commenter instantanément — voir [Commentaires au clic droit](/fr/docs/widget/right-click) |
 | `captureDiagnostics` | `boolean` ou objet | `false` | Joint les entrées console récentes (max 50) et les requêtes réseau (max 20) à chaque feedback. `true` active les deux ; un objet choisit les canaux et les limites |
 | `deepLink` | `boolean` ou `{ param?: string }` | `false` | Au premier chargement, met en avant le feedback référencé par `?siteping=<id>` (ou votre paramètre personnalisé). Chargement initial uniquement — pour les changements de route, appelez `focusFeedback()` |
-| `identity` | `{ name, email }` | — | Pré-remplit l'auteur (applis avec SSO) : évite complètement la modale d'identité, jamais persisté dans le localStorage |
+| `identity` | `{ name, email }` | — | Préremplit les champs d'auteur depuis la session de l'application hôte (ex. SSO), évite la modale et n'est jamais persisté. N'authentifie pas les requêtes API — utilisez `headers` pour le bearer. Lu à l'init ; remontez le widget après un changement de compte |
 
 ## Cadrage par page
 

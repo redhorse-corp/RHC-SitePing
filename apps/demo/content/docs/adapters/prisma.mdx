@@ -42,7 +42,7 @@ Any framework that speaks Web `Request`/`Response` (Hono, Remix, SvelteKit, …)
 ## The security model, honestly
 
 - Without `apiKey` or OIDC, reads are public by default. With an API key, only methods in `publicEndpoints` allow anonymous requests. With OIDC, GET requires a valid bearer token unless `"GET"` is explicitly listed in `publicEndpoints`.
-- POST and OPTIONS are public by default when `apiKey` or OIDC is configured. A valid OIDC token on POST assigns the new feedback to its issuer and subject; anonymous submissions remain unowned.
+- POST and OPTIONS are public by default when `apiKey` or OIDC is configured. A valid OIDC token on POST binds the record's internal owner to the token's verified issuer and subject; it does not fill `authorName` or `authorEmail` from claims. Anonymous submissions remain unowned; use widget `identity` to prefill author details from the host app.
 - With OIDC, PATCH and delete-all require an administrator. A single DELETE is allowed to an administrator or the feedback's owner by default; set `oidc.allowOwnerDeletes: false` to require an administrator for every delete. A valid `apiKey` remains an administrator credential, including when OIDC is also configured.
 - `publicEndpoints` cannot bypass OIDC authorization for PATCH or DELETE. `requireAuthForDestructive: false` is rejected with OIDC; without OIDC, disable it only behind your own auth middleware.
 - `OPTIONS` is always public — preflights must work.
@@ -82,7 +82,7 @@ SITEPING_OIDC_ADMIN_ROLES=siteping-admin,siteping-owner
 SITEPING_OIDC_ALLOW_OWNER_DELETES=false
 ```
 
-Set the issuer, audience, and JWKS URI together to enable OIDC. The roles claim defaults to `roles`, admin roles to `admin`, and owner deletes to `false`. If all OIDC variables are absent, the demo keeps its original open permissions; partial configuration fails at startup. **That fallback makes unauthenticated PATCH and DELETE public.** Keep these variables server-side; never use a `NEXT_PUBLIC_` prefix.
+Set the issuer, audience, and JWKS URI together to enable OIDC. The roles claim defaults to `roles`, admin roles to `admin`, and owner deletes to `false`. `SITEPING_OIDC_ROLES_CLAIM=groups` selects a claim in the access token; it is not an OIDC scope. `profile` and `email` scopes are not required for authorization or ownership. If all OIDC variables are absent, the demo keeps its original open permissions; partial configuration fails at startup. **That fallback makes unauthenticated PATCH and DELETE public.** Keep these variables server-side; never use a `NEXT_PUBLIC_` prefix.
 
 ## HTTP reference
 

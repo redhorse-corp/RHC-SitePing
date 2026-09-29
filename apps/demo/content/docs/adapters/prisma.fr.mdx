@@ -42,7 +42,7 @@ Tout framework qui parle `Request`/`Response` du Web (Hono, Remix, SvelteKit, �
 ## Le modèle de sécurité, franchement
 
 - Sans `apiKey` ni OIDC, les lectures sont publiques par défaut. Avec une API key, seules les méthodes de `publicEndpoints` acceptent les requêtes anonymes. Avec OIDC, GET exige un bearer valide sauf si `"GET"` figure explicitement dans `publicEndpoints`.
-- POST et OPTIONS sont publics par défaut lorsque `apiKey` ou OIDC est configuré. Un POST avec un JWT OIDC valide associe le nouveau feedback à son issuer et son subject ; un envoi anonyme reste sans propriétaire.
+- POST et OPTIONS sont publics par défaut lorsque `apiKey` ou OIDC est configuré. Un POST avec un JWT OIDC valide associe le propriétaire interne de l'enregistrement à l'issuer et au subject vérifiés du jeton ; les claims ne remplissent pas `authorName` ni `authorEmail`. Les envois anonymes restent sans propriétaire ; utilisez `identity` du widget pour préremplir les informations d'auteur depuis l'application hôte.
 - Avec OIDC, PATCH et delete-all exigent un rôle administrateur. Par défaut, un DELETE unique est autorisé à un administrateur ou au propriétaire du feedback ; définissez `oidc.allowOwnerDeletes: false` pour réserver toute suppression aux administrateurs. Une `apiKey` valide reste une identité administratrice, même avec OIDC.
 - `publicEndpoints` ne contourne pas l'autorisation OIDC pour PATCH ou DELETE. `requireAuthForDestructive: false` est refusé avec OIDC ; sans OIDC, ne le désactivez que derrière votre propre middleware d'auth.
 - `OPTIONS` reste toujours public — les préflights doivent fonctionner.
@@ -82,7 +82,7 @@ SITEPING_OIDC_ADMIN_ROLES=siteping-admin,siteping-owner
 SITEPING_OIDC_ALLOW_OWNER_DELETES=false
 ```
 
-Définissez ensemble l'issuer, l'audience et l'URI JWKS pour activer OIDC. Le claim de rôles vaut `roles`, les rôles admin `admin` et les suppressions par le propriétaire `false` par défaut. Si aucune variable OIDC n'est définie, la démo conserve ses permissions initialement ouvertes ; une configuration partielle échoue au démarrage. **Dans ce mode de repli, PATCH et DELETE sont publics sans authentification.** Gardez ces variables côté serveur ; n'utilisez jamais le préfixe `NEXT_PUBLIC_`.
+Définissez ensemble l'issuer, l'audience et l'URI JWKS pour activer OIDC. Le claim de rôles vaut `roles`, les rôles admin `admin` et les suppressions par le propriétaire `false` par défaut. `SITEPING_OIDC_ROLES_CLAIM=groups` sélectionne un claim du jeton d'accès ; ce n'est pas un scope OIDC. Les scopes `profile` et `email` ne sont pas nécessaires à l'autorisation ni à l'appartenance. Si aucune variable OIDC n'est définie, la démo conserve ses permissions initialement ouvertes ; une configuration partielle échoue au démarrage. **Dans ce mode de repli, PATCH et DELETE sont publics sans authentification.** Gardez ces variables côté serveur ; n'utilisez jamais le préfixe `NEXT_PUBLIC_`.
 
 ## Référence HTTP
 
