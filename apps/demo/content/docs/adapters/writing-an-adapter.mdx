@@ -127,7 +127,7 @@ async verifyProjectOwnership(id: string, projectName: string): Promise<boolean> 
 
 Implement it whenever your store serves more than one project. When it's absent, handlers skip the check and trust the `id` alone.
 
-With OIDC, only the configured administrator role may change status or delete feedback, individually or in bulk. The handler derives `owner` from the verified token, but ownership does not grant mutation rights. `verifyFeedbackOwner` remains an optional store capability, not an authorization grant.
+With OIDC, only administrators may change status or delete all feedback. By default, owners may delete their own feedback when the store implements `verifyFeedbackOwner`; set `oidc.allowOwnerDeletes: false` to restrict every delete to administrators. The handler derives `owner` from the verified token.
 
 ## Prove it: the conformance suite
 

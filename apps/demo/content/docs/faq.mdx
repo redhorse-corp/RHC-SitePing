@@ -32,7 +32,7 @@ The comment, its type and status, the page (the URL **path** only by default —
 
 ## Can anyone read my feedback API?
 
-Without `apiKey` or OIDC, reads are public by default. With OIDC, GET requires a bearer token unless explicitly configured as public. With an API key, only `publicEndpoints` are anonymous by default (`POST` and `OPTIONS`). Unauthenticated GET/PATCH responses redact author emails; public POST responses echo the submitted email. `clientId` and owner identifiers are never exposed. PATCH and DELETE use the configured API-key or OIDC role/ownership policy; in production, set `requireAuthForDestructive: false` only when the handler is behind your own trusted auth middleware.
+Without `apiKey` or OIDC, reads are public by default. With OIDC, GET requires a bearer token unless explicitly configured as public. With an API key, only `publicEndpoints` are anonymous by default (`POST` and `OPTIONS`). Unauthenticated GET/PATCH responses redact author emails; public POST responses echo the submitted email. `clientId` and owner identifiers are never exposed. With OIDC, PATCH and delete-all require an administrator; a single DELETE also permits the owner by default unless `oidc.allowOwnerDeletes` is `false`. In production, set `requireAuthForDestructive: false` only when the handler is behind your own trusted auth middleware.
 
 ## What happens if the network drops mid-submit?
 

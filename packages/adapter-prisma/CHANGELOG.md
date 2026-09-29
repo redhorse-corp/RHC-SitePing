@@ -4,7 +4,7 @@
 
 ### Features
 
-* add OIDC JWT authentication with administrator-only status changes and deletions
+* add OIDC JWT authentication with administrator-only status changes and configurable owner deletion
 
 ## [0.6.6](https://github.com/NeosiaNexus/SitePing/compare/adapter-prisma-v0.6.5...adapter-prisma-v0.6.6) (2026-09-23)
 

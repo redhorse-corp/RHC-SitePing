@@ -30,7 +30,7 @@ Tout framework qui parle `Request`/`Response` du Web (Hono, Remix, SvelteKit, �
 | `prisma` | `SitepingPrismaClient` | — | Votre client Prisma. Obligatoire sauf si vous passez `store` |
 | `store` | `SitepingStore` | — | Utiliser n'importe quel store au lieu de Prisma (prioritaire) |
 | `apiKey` | `string` | — | Active l'auth Bearer. Les requêtes envoient `Authorization: Bearer <clé>` |
-| `oidc` | `OidcOptions` | — | Vérifie les JWT signés avec `issuer`, `audience` et `jwksUri` ; `rolesClaim` vaut `roles` par défaut, `adminRoles` `["admin"]` |
+| `oidc` | `OidcOptions` | — | Vérifie les JWT signés avec `issuer`, `audience` et `jwksUri` ; `rolesClaim` vaut `roles` par défaut, `adminRoles` `["admin"]`, et `allowOwnerDeletes` `true` (mettre `false` pour réserver les suppressions aux admins) |
 | `publicEndpoints` | `SitepingHttpMethod[]` | `["POST", "OPTIONS"]` si `apiKey` ou `oidc` est défini | Méthodes accessibles sans identité. **Une valeur remplace le défaut** ; OIDC continue de protéger PATCH et DELETE |
 | `requireAuthForDestructive` | `boolean` | `true` | Réglage historique de PATCH/DELETE sans identifiants. En production, `true` exige `apiKey` ou OIDC au démarrage ; `false` permet le démarrage sans l'un ni l'autre et n'est sûr que derrière un middleware d'auth de confiance. OIDC refuse `false` |
 | `redactUnauthenticatedEmails` | `boolean` | `true` | Voir [les données exposées](#ce-que-les-réponses-exposent) |
@@ -43,7 +43,7 @@ Tout framework qui parle `Request`/`Response` du Web (Hono, Remix, SvelteKit, �
 
 - Sans `apiKey` ni OIDC, les lectures sont publiques par défaut. Avec une API key, seules les méthodes de `publicEndpoints` acceptent les requêtes anonymes. Avec OIDC, GET exige un bearer valide sauf si `"GET"` figure explicitement dans `publicEndpoints`.
 - POST et OPTIONS sont publics par défaut lorsque `apiKey` ou OIDC est configuré. Un POST avec un JWT OIDC valide associe le nouveau feedback à son issuer et son subject ; un envoi anonyme reste sans propriétaire.
-- Avec OIDC, PATCH exige un rôle administrateur. Un DELETE unique est autorisé à un administrateur ou au propriétaire du feedback ; delete-all exige un administrateur. Une `apiKey` valide reste une identité administratrice, même avec OIDC.
+- Avec OIDC, PATCH et delete-all exigent un rôle administrateur. Par défaut, un DELETE unique est autorisé à un administrateur ou au propriétaire du feedback ; définissez `oidc.allowOwnerDeletes: false` pour réserver toute suppression aux administrateurs. Une `apiKey` valide reste une identité administratrice, même avec OIDC.
 - `publicEndpoints` ne contourne pas l'autorisation OIDC pour PATCH ou DELETE. `requireAuthForDestructive: false` est refusé avec OIDC ; sans OIDC, ne le désactivez que derrière votre propre middleware d'auth.
 - `OPTIONS` reste toujours public — les préflights doivent fonctionner.
 
@@ -61,7 +61,8 @@ createSitepingHandler({
     issuer: process.env.OIDC_ISSUER!,
     audience: process.env.SITEPING_API_AUDIENCE!,
     jwksUri: process.env.OIDC_JWKS_URI!,
-    // rolesClaim vaut "roles" par défaut ; adminRoles vaut ["admin"].
+    // rolesClaim vaut "roles" par défaut ; adminRoles vaut ["admin"] et allowOwnerDeletes true.
+    // Définissez allowOwnerDeletes: false pour réserver les suppressions aux administrateurs.
   },
 });
 ```
@@ -203,5 +204,5 @@ Trois réserves, directement issues du code source :
 
 - La vérification d'appartenance inter-projets sur PATCH/DELETE tourne pour tout store qui implémente la méthode optionnelle `verifyProjectOwnership` — les adapters memory et localStorage et tout ce qui repose sur `createCollectionStore` le font. Un store écrit à la main qui l'omet saute la vérification : quiconque connaît l'`id` d'un feedback peut alors le modifier quel que soit le `projectName`, donc implémentez la méthode (voir [écrire un adapter](/fr/docs/adapters/writing-an-adapter#appartenance-au-projet)) ou placez l'endpoint derrière un `apiKey`.
 
-- Avec OIDC, seul un administrateur configuré peut changer le statut ou supprimer des feedbacks, individuellement ou en masse. La propriété ne confère aucun droit de mutation.
+- Avec OIDC, seul un administrateur configuré peut changer le statut ou supprimer tous les feedbacks. Un DELETE unique autorise aussi le propriétaire par défaut si le store implémente `verifyFeedbackOwner` ; définissez `oidc.allowOwnerDeletes: false` pour réserver toute suppression aux administrateurs.
 - `screenshotStorage` et `caseInsensitiveSearch` ne s'appliquent qu'au chemin Prisma intégré ; avec un store personnalisé, gérez les captures à l'intérieur de votre store.

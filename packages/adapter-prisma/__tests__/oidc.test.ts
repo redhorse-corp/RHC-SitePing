@@ -187,14 +187,14 @@ describe("OIDC JWT verification", () => {
 
     expect(response.status).toBe(201);
     const created = (await response.json()) as WireFeedback;
-    expect(created.permissions).toEqual({ canDelete: false, canChangeStatus: false });
+    expect(created.permissions).toEqual({ canDelete: true, canChangeStatus: false });
     expect(created).not.toHaveProperty("ownerIssuer");
     expect(created).not.toHaveProperty("ownerSubject");
 
     const listResponse = await handler.GET(getRequest(bearer(memberToken)));
     const list = (await listResponse.json()) as WireList;
     expect(list.permissions).toEqual({ canManage: false });
-    expect(list.feedbacks[0]?.permissions).toEqual({ canDelete: false, canChangeStatus: false });
+    expect(list.feedbacks[0]?.permissions).toEqual({ canDelete: true, canChangeStatus: false });
     expect(list.feedbacks[0]?.authorEmail).toBe("alice@example.com");
   });
 
@@ -278,6 +278,7 @@ describe("OIDC JWT verification", () => {
     expect(anonymousList.feedbacks[0]?.permissions).toEqual({ canDelete: false, canChangeStatus: false });
     expect(anonymousList.feedbacks[0]?.authorEmail).toBe("");
     const memberList = (await (await publicGet.GET(getRequest(member))).json()) as WireList;
+    expect(memberList.feedbacks[0]?.permissions).toEqual({ canDelete: true, canChangeStatus: false });
     expect(memberList.feedbacks[0]?.authorEmail).toBe("alice@example.com");
     expect((await publicGet.GET(getRequest("Bearer invalid-token"))).status).toBe(401);
 
@@ -309,7 +310,7 @@ describe("OIDC JWT verification", () => {
 });
 
 describe("OIDC feedback authorization", () => {
-  it("allows only administrators to mutate feedback and returns capabilities", async () => {
+  it("allows feedback owners to delete only their own records by default", async () => {
     const store = makeStore();
     const handler = makeHandler(store);
     const alice = bearer(await signToken({ subject: "alice", roles: ["member"] }));
@@ -331,11 +332,12 @@ describe("OIDC feedback authorization", () => {
     const aliceRecord = (await aliceResponse.json()) as WireFeedback;
     const bobRecord = (await bobResponse.json()) as WireFeedback;
     const legacyRecord = (await legacyResponse.json()) as WireFeedback;
+    expect(aliceRecord.permissions).toEqual({ canDelete: true, canChangeStatus: false });
 
     const memberList = (await (await handler.GET(getRequest(alice))).json()) as WireList;
     expect(memberList.permissions).toEqual({ canManage: false });
     expect(memberList.feedbacks.find((feedback) => feedback.id === aliceRecord.id)?.permissions).toEqual({
-      canDelete: false,
+      canDelete: true,
       canChangeStatus: false,
     });
     expect(memberList.feedbacks.find((feedback) => feedback.id === bobRecord.id)?.permissions).toEqual({
@@ -352,7 +354,7 @@ describe("OIDC feedback authorization", () => {
     expect((await handler.DELETE(deleteRequest(bobRecord.id, alice))).status).toBe(403);
     expect((await handler.DELETE(deleteRequest(legacyRecord.id, alice))).status).toBe(403);
     expect((await handler.DELETE(deleteRequest(aliceRecord.id, alice, "other-project"))).status).toBe(404);
-    expect((await handler.DELETE(deleteRequest(aliceRecord.id, alice))).status).toBe(403);
+    expect((await handler.DELETE(deleteRequest(aliceRecord.id, alice))).status).toBe(200);
     expect((await handler.DELETE(deleteAllRequest(alice))).status).toBe(403);
 
     const adminList = (await (await handler.GET(getRequest(admin))).json()) as WireList;
@@ -361,8 +363,38 @@ describe("OIDC feedback authorization", () => {
     expect(adminList.feedbacks.every((feedback) => feedback.permissions?.canChangeStatus === true)).toBe(true);
     expect((await handler.PATCH(patchRequest(bobRecord.id, admin))).status).toBe(200);
     expect((await handler.DELETE(deleteRequest(legacyRecord.id, admin))).status).toBe(200);
-    expect((await handler.DELETE(deleteRequest(aliceRecord.id, admin))).status).toBe(200);
+    expect((await handler.DELETE(deleteRequest(bobRecord.id, admin))).status).toBe(200);
     expect((await handler.DELETE(deleteAllRequest(admin))).status).toBe(200);
+  });
+  it("can restrict every OIDC delete to administrators", async () => {
+    const handler = makeHandler(makeStore(), {}, { allowOwnerDeletes: false });
+    const alice = bearer(await signToken({ subject: "alice", roles: ["member"] }));
+    const admin = bearer(await signToken({ subject: "administrator", roles: "admin" }));
+    const created = await handler.POST(
+      postRequest({ ...validPayloadNoAnnotations, clientId: "admin-only-delete" }, alice),
+    );
+    expect(created.status).toBe(201);
+    const feedback = (await created.json()) as WireFeedback;
+    expect(feedback.permissions).toEqual({ canDelete: false, canChangeStatus: false });
+
+    const memberList = (await (await handler.GET(getRequest(alice))).json()) as WireList;
+    expect(memberList.feedbacks[0]?.permissions).toEqual({ canDelete: false, canChangeStatus: false });
+    expect((await handler.PATCH(patchRequest(feedback.id, alice))).status).toBe(403);
+    expect((await handler.DELETE(deleteRequest(feedback.id, alice))).status).toBe(403);
+    expect((await handler.DELETE(deleteAllRequest(alice))).status).toBe(403);
+    expect((await handler.DELETE(deleteRequest(feedback.id, admin))).status).toBe(200);
+  });
+
+  it("denies owner deletes when a custom store cannot verify ownership", async () => {
+    const store: SitepingStore = makeStore();
+    delete store.verifyFeedbackOwner;
+    const handler = makeHandler(store);
+    const alice = bearer(await signToken({ subject: "alice", roles: ["member"] }));
+    const created = await handler.POST(postRequest(validPayloadNoAnnotations, alice));
+    const feedback = (await created.json()) as WireFeedback;
+
+    expect(feedback.permissions).toEqual({ canDelete: false, canChangeStatus: false });
+    expect((await handler.DELETE(deleteRequest(feedback.id, alice))).status).toBe(403);
   });
 
   it("returns 409 without record data for duplicate clientId replay by another owner", async () => {
@@ -384,7 +416,7 @@ describe("OIDC feedback authorization", () => {
     expect(replayedByOwner.status).toBe(201);
     const replayedRecord = (await replayedByOwner.json()) as WireFeedback;
     expect(replayedRecord.permissions).toEqual({
-      canDelete: false,
+      canDelete: true,
       canChangeStatus: false,
     });
   });

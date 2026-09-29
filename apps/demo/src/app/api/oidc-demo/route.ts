@@ -19,6 +19,7 @@ function getHandler(): SitepingHandler | null {
         jwksUri: OIDC_DEMO.jwksUri,
         rolesClaim: "groups",
         adminRoles: ["project-alpha"],
+        allowOwnerDeletes: false,
       },
     });
   }

@@ -9,6 +9,8 @@ export interface OidcOptions {
   jwksUri: string;
   rolesClaim?: string;
   adminRoles?: readonly string[];
+  /** Allow an authenticated feedback owner to delete their own feedback. Defaults to true. */
+  allowOwnerDeletes?: boolean;
 }
 
 export interface OidcPrincipal {
