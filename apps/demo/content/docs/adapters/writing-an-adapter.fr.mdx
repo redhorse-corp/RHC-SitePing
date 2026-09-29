@@ -127,14 +127,7 @@ async verifyProjectOwnership(id: string, projectName: string): Promise<boolean> 
 
 Implémentez-la dès que votre store sert plus d'un projet. En son absence, les handlers sautent la vérification et se fient au seul `id`.
 
-Avec OIDC, un non-administrateur ne peut supprimer que les feedbacks qui lui appartiennent. Enregistrez l'identité de confiance de `FeedbackCreateInput.owner` dans `ownerIssuer`/`ownerSubject` et implémentez `verifyFeedbackOwner` ; sans cette méthode, les suppressions par un membre sont refusées :
-
-```ts
-async verifyFeedbackOwner(id: string, issuer: string, subject: string): Promise<boolean> {
-  const row = await db.feedback.findUnique({ where: { id }, select: { ownerIssuer: true, ownerSubject: true } });
-  return row?.ownerIssuer === issuer && row.ownerSubject === subject;
-}
-```
+Avec OIDC, seul le rôle administrateur configuré peut changer le statut ou supprimer des feedbacks, individuellement ou en masse. Le handler dérive `owner` du jeton vérifié, mais la propriété ne confère aucun droit de mutation. `verifyFeedbackOwner` reste une capacité optionnelle du store, pas une autorisation.
 
 ## La preuve : la suite de conformité
 

@@ -138,16 +138,18 @@ export default function OidcDemo() {
 
   const widgetName = session?.user.name ?? LOCAL_VISITOR.name;
   const widgetEmail = session?.user.email ?? LOCAL_VISITOR.email;
+  const accessToken = session?.accessToken;
 
   useEffect(() => {
     let cancelled = false;
     let widget: { destroy: () => void } | undefined;
-    void Promise.all([import("@siteping/widget"), import("@siteping/adapter-localstorage")])
-      .then(([widgetModule, storeModule]) => {
+    void import("@siteping/widget")
+      .then((widgetModule) => {
         if (cancelled) return;
         widget = widgetModule.initSiteping({
-          store: new storeModule.LocalStorageStore({ key: OIDC_DEMO.localStorageKey }),
-          projectName: "siteping-oidc-local-feedback",
+          endpoint: "/api/oidc-demo",
+          ...(accessToken ? { headers: { Authorization: `Bearer ${accessToken}` } } : {}),
+          projectName: OIDC_DEMO.projectName,
           forceShow: true,
           theme: "light",
           identity: { name: widgetName, email: widgetEmail },
@@ -161,7 +163,7 @@ export default function OidcDemo() {
       cancelled = true;
       widget?.destroy();
     };
-  }, [widgetEmail, widgetName]);
+  }, [accessToken, widgetEmail, widgetName]);
   const callbackStarted = useRef(false);
 
   useEffect(() => {
@@ -333,7 +335,7 @@ export default function OidcDemo() {
     setSession(null);
     setFeedbacks([]);
     setCanManage(false);
-    setNotice("Signed out in this page. The mock provider and localStorage feedback remain separate.");
+    setNotice("Signed out locally. The server requires a verified token to read or manage OIDC records.");
     setError("");
   }
 
@@ -345,7 +347,7 @@ export default function OidcDemo() {
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-700">Local identity lab</p>
             <h1 className="mt-2 text-3xl font-bold tracking-tight">OIDC owner permissions</h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-              Sign in through mock-oauth, then compare the browser-only widget with the server-verified API.
+              Sign in through mock-oauth to test server-enforced status and deletion permissions.
             </p>
           </div>
           <Link href="/demo" className="text-sm font-medium text-indigo-700 underline underline-offset-4">
@@ -361,20 +363,19 @@ export default function OidcDemo() {
                 <h2 className="mt-1 text-xl font-semibold">Northstar workspace</h2>
               </div>
               <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-800">
-                Local only
+                OIDC API
               </span>
             </div>
             <p className="mt-4 text-sm leading-6 text-slate-600">
-              Use the Siteping button in the lower-right to annotate this page; widget feedback and the sidebar&apos;s
-              Delete all action affect only this browser&apos;s localStorage. Anyone can clear these local
-              notes—Jane/Alex roles apply only to the server-side OIDC records.
+              Feedback from this widget goes to the OIDC demo API. Visitors may submit new feedback; only Jane&apos;s
+              administrator role can change status or delete records. Existing browser-local notes are not imported.
             </p>
             <article className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-5">
               <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">Sprint review</p>
               <h3 className="mt-2 text-lg font-semibold">Client feedback, attached to the page</h3>
               <p className="mt-2 text-sm leading-6 text-slate-600">
-                The left side is a plain mock product surface. Choose Jane or Alex in the panel to the right, then leave
-                local feedback here or create a server-owned sample.
+                Choose Jane or Alex in the panel to the right. The widget and API list use the same server records and
+                verified role permissions.
               </p>
               <div className="mt-5 grid gap-3 sm:grid-cols-2">
                 <div className="rounded-md border border-slate-200 bg-white p-3">
@@ -393,7 +394,7 @@ export default function OidcDemo() {
               </p>
             )}
             <p className="mt-4 text-xs text-slate-500">
-              Widget identity prefill: {widgetName} · {widgetEmail}
+              Widget identity: {widgetName} · {widgetEmail}
             </p>
           </section>
 
@@ -492,26 +493,32 @@ export default function OidcDemo() {
                     <li key={row.id} className="py-3 first:pt-0 last:pb-0">
                       <p className="text-sm font-medium">{row.message}</p>
                       <p className="mt-1 text-xs text-slate-500">
-                        {row.authorName} · {row.status} · delete {String(row.permissions.canDelete)} · change status{" "}
-                        {String(row.permissions.canChangeStatus)}
+                        {row.authorName} · {row.status}
                       </p>
                       <div className="mt-2 flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          className={BUTTON_CLASS}
-                          onClick={() => void mutateFeedback(row, "PATCH")}
-                          disabled={busy}
-                        >
-                          {row.permissions.canChangeStatus ? "Resolve" : "Try status change (expect 403)"}
-                        </button>
-                        <button
-                          type="button"
-                          className={BUTTON_CLASS}
-                          onClick={() => void mutateFeedback(row, "DELETE")}
-                          disabled={busy}
-                        >
-                          {row.permissions.canDelete ? "Delete" : "Try delete (expect 403)"}
-                        </button>
+                        {row.permissions.canChangeStatus && (
+                          <button
+                            type="button"
+                            className={BUTTON_CLASS}
+                            onClick={() => void mutateFeedback(row, "PATCH")}
+                            disabled={busy}
+                          >
+                            Resolve
+                          </button>
+                        )}
+                        {row.permissions.canDelete && (
+                          <button
+                            type="button"
+                            className={BUTTON_CLASS}
+                            onClick={() => void mutateFeedback(row, "DELETE")}
+                            disabled={busy}
+                          >
+                            Delete
+                          </button>
+                        )}
+                        {!row.permissions.canDelete && !row.permissions.canChangeStatus && (
+                          <span className="text-xs text-slate-500">Admin-only actions</span>
+                        )}
                       </div>
                     </li>
                   ))}
@@ -522,11 +529,12 @@ export default function OidcDemo() {
         </div>
 
         <aside className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
-          <strong>Two deliberately separate paths.</strong> The widget is in LocalStorageStore mode and never calls the
-          API; its identity is only a name/email prefill. The panel above sends the mock provider&apos;s signed
-          <code> access_token</code> to a dev-only adapter-prisma handler backed by memory. This page adds the
-          provider&apos;s optional login-form <code>claims</code> override so that token has the distinct API audience
-          <code> {OIDC_DEMO.audience}</code>. Do not use this mock-only override in production.
+          <strong>Server-verified permissions.</strong> The widget and list share the dev-only OIDC API. Requests carry
+          the provider&apos;s access token when signed in; visitors may submit feedback, while listing requires a
+          verified token. Only the configured admin group can change status or delete individual or all records. The
+          provider&apos;s optional login-form <code>claims</code> override supplies this demo&apos;s distinct API
+          audience
+          <code> {OIDC_DEMO.audience}</code>; never use that mock-only override in production.
         </aside>
       </div>
     </main>

@@ -63,7 +63,7 @@ export class Panel {
   private feedbacks: FeedbackResponse[] = [];
   private currentPage = 1;
   private totalFeedbacks = 0;
-  private canManage: boolean | undefined;
+  private canManage = false;
   private isLoadingMore = false;
   private isOpen = false;
   private searchTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -130,6 +130,7 @@ export class Panel {
     setText(deleteAllLabel, ` ${this.t("panel.deleteAll")}`);
     this.deleteAllBtn.appendChild(deleteAllLabel);
     this.deleteAllBtn.addEventListener("click", () => this.confirmDeleteAll());
+    this.updateDeleteAllVisibility();
 
     // Export button
     this.exportBtn = new ExportButton(colors, () => this.feedbacks, this.t);
@@ -545,7 +546,7 @@ export class Panel {
       const response = await this.client.getFeedbacks(this.projectName, options);
       if (signal.aborted) return; // Stale response — a newer request superseded this one
       const { feedbacks, total } = response;
-      this.canManage = response.permissions?.canManage;
+      this.canManage = response.permissions?.canManage ?? true;
       this.updateDeleteAllVisibility();
       this.feedbacks = feedbacks;
       this.totalFeedbacks = total;
@@ -841,7 +842,7 @@ export class Panel {
   // ---------------------------------------------------------------------------
 
   private canManageFeedbacks(): boolean {
-    return this.canManage !== false;
+    return this.canManage;
   }
 
   private updateDeleteAllVisibility(): void {

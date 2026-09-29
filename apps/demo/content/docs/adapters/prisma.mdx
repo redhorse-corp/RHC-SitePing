@@ -203,5 +203,5 @@ Three caveats, straight from the source:
 
 - The cross-project ownership check on PATCH/DELETE runs for every store that implements the optional `verifyProjectOwnership` — the memory and localStorage adapters and anything built on `createCollectionStore` do. A hand-written store that omits it skips the check: any caller who knows a feedback `id` can then modify it regardless of `projectName`, so either implement the method (see [writing an adapter](/docs/adapters/writing-an-adapter#project-ownership)) or put the endpoint behind an `apiKey`.
 
-- With OIDC, a non-admin may delete only their own feedback. A custom store must persist the trusted `FeedbackCreateInput.owner` values as `ownerIssuer`/`ownerSubject` and implement `verifyFeedbackOwner(id, issuer, subject)`; without that method, member deletes are denied. `createCollectionStore` already implements it.
+- With OIDC, only a configured administrator may change status or delete feedback, individually or in bulk. Ownership does not grant mutation rights.
 - `screenshotStorage` and `caseInsensitiveSearch` only apply to the built-in Prisma path; with a custom store, handle screenshots inside your store.

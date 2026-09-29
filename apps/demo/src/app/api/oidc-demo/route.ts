@@ -20,7 +20,6 @@ function getHandler(): SitepingHandler | null {
         rolesClaim: "groups",
         adminRoles: ["project-alpha"],
       },
-      publicEndpoints: [],
     });
   }
   return handler;

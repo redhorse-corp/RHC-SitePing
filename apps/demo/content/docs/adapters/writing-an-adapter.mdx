@@ -127,14 +127,7 @@ async verifyProjectOwnership(id: string, projectName: string): Promise<boolean> 
 
 Implement it whenever your store serves more than one project. When it's absent, handlers skip the check and trust the `id` alone.
 
-With OIDC, a non-admin can only delete feedback that belongs to them. Persist the trusted `FeedbackCreateInput.owner` identity as `ownerIssuer`/`ownerSubject` and implement `verifyFeedbackOwner`; missing implementation denies member deletes:
-
-```ts
-async verifyFeedbackOwner(id: string, issuer: string, subject: string): Promise<boolean> {
-  const row = await db.feedback.findUnique({ where: { id }, select: { ownerIssuer: true, ownerSubject: true } });
-  return row?.ownerIssuer === issuer && row.ownerSubject === subject;
-}
-```
+With OIDC, only the configured administrator role may change status or delete feedback, individually or in bulk. The handler derives `owner` from the verified token, but ownership does not grant mutation rights. `verifyFeedbackOwner` remains an optional store capability, not an authorization grant.
 
 ## Prove it: the conformance suite
 

@@ -771,17 +771,9 @@ export function createSitepingHandler({
     return header !== null && safeCompare(header, `Bearer ${apiKey}`);
   }
 
-  function feedbackPermissions(
-    feedback: FeedbackRecord,
-    principal: RequestPrincipal | null,
-  ): NonNullable<FeedbackResponse["permissions"]> {
+  function feedbackPermissions(principal: RequestPrincipal | null): NonNullable<FeedbackResponse["permissions"]> {
     const canManage = principal?.isAdmin === true;
-    const ownsFeedback =
-      principal?.kind === "oidc" &&
-      typeof store.verifyFeedbackOwner === "function" &&
-      feedback.ownerIssuer === principal.issuer &&
-      feedback.ownerSubject === principal.subject;
-    return { canDelete: canManage || ownsFeedback, canChangeStatus: canManage };
+    return { canDelete: canManage, canChangeStatus: canManage };
   }
 
   /** Whether this request may see `authorEmail` (see `redactUnauthenticatedEmails`). */
@@ -884,7 +876,7 @@ export function createSitepingHandler({
         ) {
           return withCors(Response.json({ error: "clientId already used" }, { status: 409 }), corsHeaders);
         }
-        const permissions = oidcVerifier ? feedbackPermissions(feedback, principal) : undefined;
+        const permissions = oidcVerifier ? feedbackPermissions(principal) : undefined;
         return withCors(Response.json(toWireFeedback(feedback, true, permissions), { status: 201 }), corsHeaders);
       };
 
@@ -969,7 +961,7 @@ export function createSitepingHandler({
         const includeEmail = emailPermitted(request, principal);
         const result = await store.getFeedbacks(parsed.data);
         const feedbacks = result.feedbacks.map((feedback) =>
-          toWireFeedback(feedback, includeEmail, oidcVerifier ? feedbackPermissions(feedback, principal) : undefined),
+          toWireFeedback(feedback, includeEmail, oidcVerifier ? feedbackPermissions(principal) : undefined),
         );
         const body = oidcVerifier
           ? { ...result, feedbacks, permissions: { canManage: principal?.isAdmin === true } }
@@ -1019,7 +1011,7 @@ export function createSitepingHandler({
         const feedback = await store.updateFeedback(parsed.data.id, toFeedbackUpdate(parsed.data.status));
 
         // A public legacy PATCH must not leak the author's email.
-        const permissions = oidcVerifier ? feedbackPermissions(feedback, principal) : undefined;
+        const permissions = oidcVerifier ? feedbackPermissions(principal) : undefined;
         return withCors(
           Response.json(toWireFeedback(feedback, emailPermitted(request, principal), permissions)),
           corsHeaders,
@@ -1070,13 +1062,7 @@ export function createSitepingHandler({
           }
         }
         if (oidcVerifier && principal?.isAdmin !== true) {
-          const canDelete =
-            principal?.kind === "oidc" && store.verifyFeedbackOwner
-              ? await store.verifyFeedbackOwner(parsed.data.id, principal.issuer, principal.subject)
-              : false;
-          if (!canDelete) {
-            return withCors(Response.json({ error: "Forbidden" }, { status: 403 }), corsHeaders);
-          }
+          return withCors(Response.json({ error: "Forbidden" }, { status: 403 }), corsHeaders);
         }
 
         await store.deleteFeedback(parsed.data.id);

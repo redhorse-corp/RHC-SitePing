@@ -984,6 +984,20 @@ describe("Panel", () => {
       expect(apiClient.deleteAllFeedbacks).not.toHaveBeenCalled();
     });
 
+    it("hides and guards delete-all when the initial list request is unauthorized", async () => {
+      apiClient.getFeedbacks.mockRejectedValue(new Error("Unauthorized"));
+
+      await panel.open();
+
+      const deleteAllBtn = shadow.querySelector<HTMLButtonElement>(".sp-btn-delete-all")!;
+      expect(deleteAllBtn.hidden).toBe(true);
+      expect(deleteAllBtn.style.display).toBe("none");
+      deleteAllBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+      expect(shadow.querySelector(".sp-confirm-backdrop")).toBeNull();
+      expect(apiClient.deleteAllFeedbacks).not.toHaveBeenCalled();
+    });
+
     it("cancelling delete all does not call API", async () => {
       const fb = makeFeedback({ id: "fb-1" });
       apiClient.getFeedbacks.mockResolvedValue({ feedbacks: [fb], total: 1 });

@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "OIDC demo — SitePing",
-  description: "Try mock OIDC sign-in and owner-scoped feedback permissions locally.",
+  description: "Try mock OIDC sign-in with administrator-only feedback mutations.",
 };
 
 export default function OidcDemoPage() {

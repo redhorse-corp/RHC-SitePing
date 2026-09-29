@@ -203,5 +203,5 @@ Trois réserves, directement issues du code source :
 
 - La vérification d'appartenance inter-projets sur PATCH/DELETE tourne pour tout store qui implémente la méthode optionnelle `verifyProjectOwnership` — les adapters memory et localStorage et tout ce qui repose sur `createCollectionStore` le font. Un store écrit à la main qui l'omet saute la vérification : quiconque connaît l'`id` d'un feedback peut alors le modifier quel que soit le `projectName`, donc implémentez la méthode (voir [écrire un adapter](/fr/docs/adapters/writing-an-adapter#appartenance-au-projet)) ou placez l'endpoint derrière un `apiKey`.
 
-- Avec OIDC, un non-administrateur peut supprimer uniquement ses propres feedbacks. Un store personnalisé doit conserver les valeurs de `FeedbackCreateInput.owner` sous `ownerIssuer`/`ownerSubject` et implémenter `verifyFeedbackOwner(id, issuer, subject)` ; sans cette méthode, la suppression par un membre est refusée. `createCollectionStore` l'implémente déjà.
+- Avec OIDC, seul un administrateur configuré peut changer le statut ou supprimer des feedbacks, individuellement ou en masse. La propriété ne confère aucun droit de mutation.
 - `screenshotStorage` et `caseInsensitiveSearch` ne s'appliquent qu'au chemin Prisma intégré ; avec un store personnalisé, gérez les captures à l'intérieur de votre store.

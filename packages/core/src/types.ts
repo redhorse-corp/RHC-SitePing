@@ -807,8 +807,8 @@ export interface SitepingStore {
    */
   verifyProjectOwnership?(id: string, projectName: string): Promise<boolean>;
   /**
-   * Optional trusted-owner check. HTTP handlers deny non-admin deletes when
-   * an adapter does not implement it.
+   * Optional trusted-owner lookup for custom store workflows. The OIDC HTTP
+   * handler grants mutation permissions only to administrators.
    */
   verifyFeedbackOwner?(id: string, issuer: string, subject: string): Promise<boolean>;
 }

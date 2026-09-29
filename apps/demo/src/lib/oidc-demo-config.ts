@@ -4,5 +4,4 @@ export const OIDC_DEMO = {
   audience: "siteping-oidc-demo-api",
   jwksUri: "http://localhost/default/jwks",
   projectName: "siteping-oidc-demo",
-  localStorageKey: "siteping_oidc_demo_feedbacks",
 } as const;
