@@ -69,6 +69,21 @@ createSitepingHandler({
 
 `issuer` and `jwksUri` must use HTTPS outside development (loopback HTTP is allowed in development). The configured roles claim may be a string or an array of strings; any exact `adminRoles` match grants administrator permissions.
 
+### Container environment for the demo endpoint
+
+The demo's `/api/siteping` route reads these server-side environment variables:
+
+```dotenv
+SITEPING_OIDC_ISSUER=https://issuer.example.com/
+SITEPING_OIDC_AUDIENCE=siteping-api
+SITEPING_OIDC_JWKS_URI=https://issuer.example.com/.well-known/jwks.json
+SITEPING_OIDC_ROLES_CLAIM=groups
+SITEPING_OIDC_ADMIN_ROLES=siteping-admin,siteping-owner
+SITEPING_OIDC_ALLOW_OWNER_DELETES=false
+```
+
+Set the issuer, audience, and JWKS URI together to enable OIDC. The roles claim defaults to `roles`, admin roles to `admin`, and owner deletes to `false`. If all OIDC variables are absent, the demo keeps its original open permissions; partial configuration fails at startup. **That fallback makes unauthenticated PATCH and DELETE public.** Keep these variables server-side; never use a `NEXT_PUBLIC_` prefix.
+
 ## HTTP reference
 
 One endpoint, five methods. All bodies are JSON.
