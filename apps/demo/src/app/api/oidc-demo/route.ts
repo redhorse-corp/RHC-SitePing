@@ -18,8 +18,9 @@ function getHandler(): SitepingHandler | null {
         audience: OIDC_DEMO.audience,
         jwksUri: OIDC_DEMO.jwksUri,
         rolesClaim: "groups",
-        adminRoles: ["project-alpha"],
+        adminRoles: ["project-alpha", "analysts"],
         allowOwnerDeletes: false,
+        requireAdminForRead: true,
       },
     });
   }

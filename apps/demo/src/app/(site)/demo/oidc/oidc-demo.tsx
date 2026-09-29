@@ -367,15 +367,15 @@ export default function OidcDemo() {
               </span>
             </div>
             <p className="mt-4 text-sm leading-6 text-slate-600">
-              Feedback from this widget goes to the OIDC demo API. Visitors may submit new feedback; only Jane&apos;s
-              administrator role can change status or delete records. Existing browser-local notes are not imported.
+              Feedback from this widget goes to the OIDC demo API. Visitors can submit feedback, but only configured
+              admin groups can read or manage server records. Existing browser-local notes are not imported.
             </p>
             <article className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-5">
               <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">Sprint review</p>
               <h3 className="mt-2 text-lg font-semibold">Client feedback, attached to the page</h3>
               <p className="mt-2 text-sm leading-6 text-slate-600">
-                Choose Jane or Alex in the panel to the right. The widget and API list use the same server records and
-                verified role permissions.
+                Jane&apos;s project-alpha group and Alex&apos;s analysts group are configured as admins. A token with
+                only the <code>member</code> group gets 403 instead of feedback records.
               </p>
               <div className="mt-5 grid gap-3 sm:grid-cols-2">
                 <div className="rounded-md border border-slate-200 bg-white p-3">
@@ -405,8 +405,8 @@ export default function OidcDemo() {
             </h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
               Jane or Alex goes to the mock provider with a local-only audience override; it returns a code + state, the
-              browser exchanges that code with PKCE, then the API verifies issuer, audience, signature, expiry, and
-              groups before returning permissions.
+              browser exchanges that code with PKCE, then the API verifies the token and enforces admin-only reads and
+              management using the configured groups.
             </p>
 
             <div className="mt-4 flex flex-wrap gap-2">
@@ -426,7 +426,7 @@ export default function OidcDemo() {
                     onClick={() => void beginSignIn("alex")}
                     disabled={busy}
                   >
-                    Sign in as Alex (member)
+                    Sign in as Alex (admin)
                   </button>
                 </>
               ) : (
@@ -484,7 +484,9 @@ export default function OidcDemo() {
                 <span className="text-xs text-slate-500">{feedbacks.length} total · memory store</span>
               </div>
               {!session ? (
-                <p className="mt-3 text-sm text-slate-500">Sign in to read records; GET requires a verified token.</p>
+                <p className="mt-3 text-sm text-slate-500">
+                  Sign in with an admin group to read records; members get 403.
+                </p>
               ) : feedbacks.length === 0 ? (
                 <p className="mt-3 text-sm text-slate-500">No server records yet. Create one as {session.user.name}.</p>
               ) : (
@@ -529,11 +531,10 @@ export default function OidcDemo() {
         </div>
 
         <aside className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
-          <strong>Server-verified permissions.</strong> The widget and list share the dev-only OIDC API. Requests carry
-          the provider&apos;s access token when signed in; visitors may submit feedback, while listing requires a
-          verified token. Only the configured admin group can change status or delete individual or all records. The
-          provider&apos;s optional login-form <code>claims</code> override supplies this demo&apos;s distinct API
-          audience
+          <strong>Server-verified permissions.</strong> Requests carry the provider&apos;s access token; anyone may
+          submit feedback, but only configured admin groups can list or manage records. The login-form{" "}
+          <code>claims</code>
+          override supplies this demo&apos;s distinct API audience
           <code> {OIDC_DEMO.audience}</code>; never use that mock-only override in production.
         </aside>
       </div>

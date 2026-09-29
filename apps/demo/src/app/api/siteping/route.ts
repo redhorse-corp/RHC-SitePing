@@ -11,6 +11,7 @@ import { sitepingAuthFromEnv } from "@/lib/siteping-auth";
 export const { GET, POST, PATCH, DELETE, OPTIONS } = createSitepingHandler({
   store: memoryStore,
   // With no OIDC variables, this demo intentionally keeps destructive requests public.
+  // When OIDC is configured, reads default to admin-only and owner deletes are disabled.
   ...sitepingAuthFromEnv(),
   // webhooks: [
   //   ...(SLACK_WEBHOOK ? [{ url: SLACK_WEBHOOK, type: "slack" as const }] : []),

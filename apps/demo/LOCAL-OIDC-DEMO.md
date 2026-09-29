@@ -14,10 +14,11 @@ The discovery document advertises issuer `http://localhost/default`, authorizati
 
 The Jane/Alex buttons select a mock principal and submit a top-level form POST to `/default/authorize` with the username and the provider's documented optional login-form `claims` value. This skips the provider's standalone chooser page so the request can add the API audience. The provider redirects back with `code` and `state`; the page exchanges the code at `/default/token` with its PKCE verifier. Navigation is used for `/authorize` because its cross-origin redirect cannot be consumed by `fetch`.
 
-- **`jane`** → subject `1234567890`, Jane Doe profile claims, and groups `analysts` + `project-alpha`. With `rolesClaim: "groups"` and `adminRoles: ["project-alpha"]`, the API playground treats Jane as an admin.
-- **`alex`** → subject `alex`, Alex Rivera profile claims, and group `analysts`; Alex is a member, not an admin.
+- **`jane`** → subject `1234567890`, Jane Doe profile claims, and groups `analysts` + `project-alpha`; `project-alpha` is an admin group.
+- **`alex`** → subject `alex`, Alex Rivera profile claims, and group `analysts`; `analysts` is also configured as an admin group so Alex can manage feedback.
+- A token with only the `member` group is denied GET with `403`; `POST` stays public for widget submissions.
 
-Those role settings match the verifier options in `packages/adapter-prisma/src/oidc.ts`. The mock provider documents the interactive login `claims` field in its [`JSON_CONFIG` guidance](https://github.com/navikt/mock-oauth2-server#token-customization-via-json_config).
+The demo handler uses `rolesClaim: "groups"`, `adminRoles: ["project-alpha", "analysts"]`, `requireAdminForRead: true`, and `allowOwnerDeletes: false`. Groups not listed in `adminRoles` cannot read or manage feedback.
 
 ## Keep the two demos separate
 

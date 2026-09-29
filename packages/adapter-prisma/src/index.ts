@@ -547,9 +547,10 @@ export interface HandlerOptions {
   /**
    * HTTP methods that may be accessed without credentials.
    * Defaults to `["POST", "OPTIONS"]` when either `apiKey` or `oidc` is set.
-   * With OIDC, GET remains authenticated unless explicitly listed. PATCH and
-   * delete-all require an administrator; single DELETE also permits the owner
-   * unless `oidc.allowOwnerDeletes` is `false`.
+   * With OIDC, GET requires a valid token unless explicitly listed; set
+   * `oidc.requireAdminForRead` to require an admin even for public GET.
+   * PATCH and delete-all require an administrator; single DELETE also permits
+   * the owner unless `oidc.allowOwnerDeletes` is `false`.
    */
   publicEndpoints?: ReadonlyArray<SitepingHttpMethod>;
   /** Allowed CORS origins — when set, validates the Origin header */
@@ -945,6 +946,9 @@ export function createSitepingHandler({
       const authentication = await authenticate(request, "GET");
       if ("error" in authentication) return withCors(authentication.error, corsHeaders);
       const principal = authentication.principal;
+      if (oidc?.requireAdminForRead && principal?.isAdmin !== true) {
+        return withCors(Response.json({ error: "Forbidden" }, { status: 403 }), corsHeaders);
+      }
 
       const url = new URL(request.url);
       const rawQuery: Record<string, string> = {};

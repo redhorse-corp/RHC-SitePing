@@ -15,6 +15,7 @@ describe("sitepingAuthFromEnv", () => {
         SITEPING_OIDC_ROLES_CLAIM: "groups",
         SITEPING_OIDC_ADMIN_ROLES: "siteping-admin, siteping-owner",
         SITEPING_OIDC_ALLOW_OWNER_DELETES: "true",
+        SITEPING_OIDC_REQUIRE_ADMIN_FOR_READ: "false",
       }),
     ).toEqual({
       oidc: {
@@ -24,6 +25,7 @@ describe("sitepingAuthFromEnv", () => {
         rolesClaim: "groups",
         adminRoles: ["siteping-admin", "siteping-owner"],
         allowOwnerDeletes: true,
+        requireAdminForRead: false,
       },
     });
 
@@ -41,6 +43,7 @@ describe("sitepingAuthFromEnv", () => {
         rolesClaim: "roles",
         adminRoles: ["admin"],
         allowOwnerDeletes: false,
+        requireAdminForRead: true,
       },
     });
   });
@@ -60,5 +63,13 @@ describe("sitepingAuthFromEnv", () => {
         SITEPING_OIDC_ALLOW_OWNER_DELETES: "sometimes",
       }),
     ).toThrow(/SITEPING_OIDC_ALLOW_OWNER_DELETES must be "true" or "false"/);
+    expect(() =>
+      sitepingAuthFromEnv({
+        SITEPING_OIDC_ISSUER: "https://issuer.example/",
+        SITEPING_OIDC_AUDIENCE: "siteping-api",
+        SITEPING_OIDC_JWKS_URI: "https://issuer.example/jwks",
+        SITEPING_OIDC_REQUIRE_ADMIN_FOR_READ: "sometimes",
+      }),
+    ).toThrow(/SITEPING_OIDC_REQUIRE_ADMIN_FOR_READ must be "true" or "false"/);
   });
 });

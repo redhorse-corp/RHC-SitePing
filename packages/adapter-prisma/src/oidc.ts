@@ -11,6 +11,8 @@ export interface OidcOptions {
   adminRoles?: readonly string[];
   /** Allow an authenticated feedback owner to delete their own feedback. Defaults to true. */
   allowOwnerDeletes?: boolean;
+  /** Require an administrator role for GET requests, including publicEndpoints overrides. */
+  requireAdminForRead?: boolean;
 }
 
 export interface OidcPrincipal {

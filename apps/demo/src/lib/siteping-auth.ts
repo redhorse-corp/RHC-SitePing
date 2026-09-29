@@ -7,10 +7,11 @@ function readEnv(env: Environment, name: string): string | undefined {
   return env[name]?.trim() || undefined;
 }
 
-function parseOwnerDeleteSetting(value: string | undefined): boolean {
-  if (value === undefined || value.toLowerCase() === "false") return false;
+function parseBooleanSetting(value: string | undefined, name: string, defaultValue: boolean): boolean {
+  if (value === undefined) return defaultValue;
   if (value.toLowerCase() === "true") return true;
-  throw new Error('[siteping] SITEPING_OIDC_ALLOW_OWNER_DELETES must be "true" or "false".');
+  if (value.toLowerCase() === "false") return false;
+  throw new Error(`[siteping] ${name} must be "true" or "false".`);
 }
 
 export function sitepingAuthFromEnv(env: Environment = process.env): SitepingAuthOptions {
@@ -20,8 +21,11 @@ export function sitepingAuthFromEnv(env: Environment = process.env): SitepingAut
   const rolesClaim = readEnv(env, "SITEPING_OIDC_ROLES_CLAIM");
   const adminRolesValue = readEnv(env, "SITEPING_OIDC_ADMIN_ROLES");
   const ownerDeletesValue = readEnv(env, "SITEPING_OIDC_ALLOW_OWNER_DELETES");
+  const requireAdminForReadValue = readEnv(env, "SITEPING_OIDC_REQUIRE_ADMIN_FOR_READ");
 
-  if (![issuer, audience, jwksUri, rolesClaim, adminRolesValue, ownerDeletesValue].some(Boolean)) {
+  if (
+    ![issuer, audience, jwksUri, rolesClaim, adminRolesValue, ownerDeletesValue, requireAdminForReadValue].some(Boolean)
+  ) {
     return { requireAuthForDestructive: false };
   }
   if (!issuer || !audience || !jwksUri) {
@@ -48,7 +52,8 @@ export function sitepingAuthFromEnv(env: Environment = process.env): SitepingAut
       jwksUri,
       rolesClaim: rolesClaim ?? "roles",
       adminRoles,
-      allowOwnerDeletes: parseOwnerDeleteSetting(ownerDeletesValue),
+      allowOwnerDeletes: parseBooleanSetting(ownerDeletesValue, "SITEPING_OIDC_ALLOW_OWNER_DELETES", false),
+      requireAdminForRead: parseBooleanSetting(requireAdminForReadValue, "SITEPING_OIDC_REQUIRE_ADMIN_FOR_READ", true),
     },
   };
 }

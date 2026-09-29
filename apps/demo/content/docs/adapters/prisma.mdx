@@ -30,8 +30,8 @@ Any framework that speaks Web `Request`/`Response` (Hono, Remix, SvelteKit, …)
 | `prisma` | `SitepingPrismaClient` | — | Your Prisma client. Required unless you pass `store` |
 | `store` | `SitepingStore` | — | Use any store instead of Prisma (takes precedence) |
 | `apiKey` | `string` | — | Enables Bearer auth. Requests send `Authorization: Bearer <key>` |
-| `oidc` | `OidcOptions` | — | Verify signed JWTs using `issuer`, `audience` and `jwksUri`; `rolesClaim` defaults to `roles`, `adminRoles` to `["admin"]`, and `allowOwnerDeletes` to `true` (set `false` for admin-only deletes) |
-| `publicEndpoints` | `SitepingHttpMethod[]` | `["POST", "OPTIONS"]` when `apiKey` or `oidc` is set | Methods that allow anonymous requests. **Passing a value replaces the default**; OIDC still protects PATCH and DELETE |
+| `oidc` | `OidcOptions` | — | Verify signed JWTs using `issuer`, `audience` and `jwksUri`; `rolesClaim` defaults to `roles`, `adminRoles` to `["admin"]`, `allowOwnerDeletes` to `true`, and `requireAdminForRead` to `false` |
+| `publicEndpoints` | `SitepingHttpMethod[]` | `["POST", "OPTIONS"]` when `apiKey` or `oidc` is set | Methods that allow anonymous requests. **Passing a value replaces the default**; OIDC still protects PATCH/DELETE, and `requireAdminForRead` can restrict GET |
 | `requireAuthForDestructive` | `boolean` | `true` | Legacy switch for unauthenticated PATCH/DELETE. In production, `true` requires `apiKey` or OIDC at startup; `false` permits startup without either and is safe only behind trusted auth middleware. OIDC rejects `false` |
 | `redactUnauthenticatedEmails` | `boolean` | `true` | See [what responses expose](#what-responses-expose) |
 | `allowedOrigins` | `string[]` | — | Exact-match CORS allowlist. **No wildcard support** — `["*"]` matches nothing; unset means no CORS headers at all |
@@ -41,10 +41,10 @@ Any framework that speaks Web `Request`/`Response` (Hono, Remix, SvelteKit, …)
 
 ## The security model, honestly
 
-- Without `apiKey` or OIDC, reads are public by default. With an API key, only methods in `publicEndpoints` allow anonymous requests. With OIDC, GET requires a valid bearer token unless `"GET"` is explicitly listed in `publicEndpoints`.
+- Without `apiKey` or OIDC, reads are public by default. With OIDC, GET requires a valid bearer token unless `"GET"` is explicitly listed in `publicEndpoints`; set `oidc.requireAdminForRead: true` to require a configured administrator even for a public GET.
 - POST and OPTIONS are public by default when `apiKey` or OIDC is configured. A valid OIDC token on POST binds the record's internal owner to the token's verified issuer and subject; it does not fill `authorName` or `authorEmail` from claims. Anonymous submissions remain unowned; use widget `identity` to prefill author details from the host app.
 - With OIDC, PATCH and delete-all require an administrator. A single DELETE is allowed to an administrator or the feedback's owner by default; set `oidc.allowOwnerDeletes: false` to require an administrator for every delete. A valid `apiKey` remains an administrator credential, including when OIDC is also configured.
-- `publicEndpoints` cannot bypass OIDC authorization for PATCH or DELETE. `requireAuthForDestructive: false` is rejected with OIDC; without OIDC, disable it only behind your own auth middleware.
+- `publicEndpoints` cannot bypass OIDC authorization for PATCH or DELETE, or the `requireAdminForRead` role check. `requireAuthForDestructive: false` is rejected with OIDC; without OIDC, disable it only behind your own auth middleware.
 - `OPTIONS` is always public — preflights must work.
 
 ### What responses expose
@@ -61,8 +61,9 @@ createSitepingHandler({
     issuer: process.env.OIDC_ISSUER!,
     audience: process.env.SITEPING_API_AUDIENCE!,
     jwksUri: process.env.OIDC_JWKS_URI!,
-    // rolesClaim defaults to "roles", adminRoles to ["admin"], and allowOwnerDeletes to true.
-    // Set allowOwnerDeletes: false for administrator-only deletes.
+    // Protect dashboard reads and require admins for every delete.
+    requireAdminForRead: true,
+    allowOwnerDeletes: false,
   },
 });
 ```
@@ -80,9 +81,10 @@ SITEPING_OIDC_JWKS_URI=https://issuer.example.com/.well-known/jwks.json
 SITEPING_OIDC_ROLES_CLAIM=groups
 SITEPING_OIDC_ADMIN_ROLES=siteping-admin,siteping-owner
 SITEPING_OIDC_ALLOW_OWNER_DELETES=false
+SITEPING_OIDC_REQUIRE_ADMIN_FOR_READ=true
 ```
 
-Set the issuer, audience, and JWKS URI together to enable OIDC. The roles claim defaults to `roles`, admin roles to `admin`, and owner deletes to `false`. `SITEPING_OIDC_ROLES_CLAIM=groups` selects a claim in the access token; it is not an OIDC scope. `profile` and `email` scopes are not required for authorization or ownership. If all OIDC variables are absent, the demo keeps its original open permissions; partial configuration fails at startup. **That fallback makes unauthenticated PATCH and DELETE public.** Keep these variables server-side; never use a `NEXT_PUBLIC_` prefix.
+Set the issuer, audience, and JWKS URI together to enable OIDC. The roles claim defaults to `roles` and admin roles to `admin`. For this demo endpoint, admin-only reads default to `true` and owner deletes to `false`; set `SITEPING_OIDC_REQUIRE_ADMIN_FOR_READ=false` only if non-admin users should read feedback. `SITEPING_OIDC_ROLES_CLAIM=groups` selects a claim in the access token; it is not an OIDC scope. `profile` and `email` scopes are not required for authorization or ownership. If all OIDC variables are absent, the demo keeps its original open permissions; partial configuration fails at startup. **That fallback makes unauthenticated PATCH and DELETE public.** Keep these variables server-side; never use a `NEXT_PUBLIC_` prefix.
 
 ## HTTP reference
 
@@ -91,7 +93,7 @@ One endpoint, five methods. All bodies are JSON.
 | Method | Purpose | Success |
 |---|---|---|
 | `POST` | Create feedback (widget submissions) | `201` + record. With OIDC, a replayed `clientId` returns the existing record only to its owner or an administrator; others get `409`. Replays do not notify webhooks twice. A `clientId` used by another project gets `409` |
-| `GET` | List feedback | `200` + `{ feedbacks, total }`; with OIDC also includes `permissions: { canManage }` on the list and `permissions: { canChangeStatus, canDelete }` on each record |
+| `GET` | List feedback | `200` + `{ feedbacks, total }`; with OIDC also includes `permissions: { canManage }` on the list and `permissions: { canChangeStatus, canDelete }` on each record. `requireAdminForRead: true` returns `403` to non-admins |
 | `PATCH` | Change a status | `200` + updated record |
 | `DELETE` | Delete one or all | `200` + `{ deleted: true }` |
 | `OPTIONS` | CORS preflight | `204` |

@@ -60,11 +60,12 @@ interface TokenOptions {
   expiresAt?: string | number | null;
   notBefore?: number;
   roles?: unknown;
+  rolesClaim?: string;
   key?: CryptoKey;
 }
 
 async function signToken(options: TokenOptions = {}): Promise<string> {
-  const roles = options.roles === undefined ? {} : { roles: options.roles };
+  const roles = options.roles === undefined ? {} : { [options.rolesClaim ?? "roles"]: options.roles };
   let token = new SignJWT(roles)
     .setProtectedHeader({ alg: "RS256", kid: KEY_ID })
     .setIssuer(options.issuer ?? issuer)
@@ -382,6 +383,42 @@ describe("OIDC feedback authorization", () => {
     expect((await handler.PATCH(patchRequest(feedback.id, alice))).status).toBe(403);
     expect((await handler.DELETE(deleteRequest(feedback.id, alice))).status).toBe(403);
     expect((await handler.DELETE(deleteAllRequest(alice))).status).toBe(403);
+    expect((await handler.DELETE(deleteRequest(feedback.id, admin))).status).toBe(200);
+  });
+  it("requires admin reads while keeping public feedback submissions available", async () => {
+    const handler = makeHandler(
+      makeStore(),
+      { publicEndpoints: ["GET", "POST", "OPTIONS"] },
+      {
+        requireAdminForRead: true,
+        allowOwnerDeletes: false,
+        rolesClaim: "groups",
+        adminRoles: ["project-alpha", "analysts"],
+      },
+    );
+    const member = bearer(await signToken({ subject: "member", rolesClaim: "groups", roles: ["member"] }));
+    const admin = bearer(await signToken({ subject: "alex", rolesClaim: "groups", roles: ["analysts"] }));
+    const memberPost = await handler.POST(
+      postRequest({ ...validPayloadNoAnnotations, clientId: "member-read-denied" }, member),
+    );
+    const anonymousPost = await handler.POST(
+      postRequest({ ...validPayloadNoAnnotations, clientId: "anonymous-submit" }),
+    );
+    expect(memberPost.status).toBe(201);
+    expect(anonymousPost.status).toBe(201);
+    const feedback = (await memberPost.json()) as WireFeedback;
+
+    expect((await handler.GET(getRequest())).status).toBe(403);
+    expect((await handler.GET(getRequest(member))).status).toBe(403);
+    const adminListResponse = await handler.GET(getRequest(admin));
+    expect(adminListResponse.status).toBe(200);
+    const adminList = (await adminListResponse.json()) as WireList;
+    expect(adminList.permissions).toEqual({ canManage: true });
+    expect(adminList.feedbacks).toHaveLength(2);
+
+    expect((await handler.PATCH(patchRequest(feedback.id, member))).status).toBe(403);
+    expect((await handler.DELETE(deleteRequest(feedback.id, member))).status).toBe(403);
+    expect((await handler.PATCH(patchRequest(feedback.id, admin))).status).toBe(200);
     expect((await handler.DELETE(deleteRequest(feedback.id, admin))).status).toBe(200);
   });
 
