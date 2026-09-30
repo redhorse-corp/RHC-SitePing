@@ -16,15 +16,15 @@ import {
   type SitepingStore,
   toFeedbackUpdate,
 } from "@siteping/core";
+import type { OidcPrincipal, OidcVerificationOptions } from "@siteping/core/oidc";
+import { createOidcVerifier, OidcInvalidTokenError, OidcUnavailableError } from "@siteping/core/oidc";
 import { z } from "zod";
-import type { OidcOptions, OidcPrincipal } from "./oidc.js";
-import { createOidcVerifier, OidcInvalidTokenError, OidcUnavailableError } from "./oidc.js";
 
 export interface SitepingMcpOptions {
   store: SitepingStore;
   projectName: string;
   resourceUrl: URL;
-  oidc: Pick<OidcOptions, "issuer" | "jwksUri" | "rolesClaim" | "adminRoles">;
+  oidc: Pick<OidcVerificationOptions, "issuer" | "jwksUri" | "rolesClaim" | "adminRoles">;
   allowedOrigins?: readonly string[];
 }
 

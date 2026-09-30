@@ -3,27 +3,25 @@ title: Serveur MCP
 description: Connectez un client MCP aux feedbacks Siteping d’un projet.
 ---
 
-`@siteping/adapter-prisma/mcp` ajoute un serveur Model Context Protocol à l’application qui héberge déjà votre store Siteping. Il expose la liste, la recherche et le changement de statut des feedbacks via Streamable HTTP. Aucun service séparé n’est nécessaire.
+`@siteping/mcp` ajoute un serveur Model Context Protocol autonome à une application qui héberge déjà un store Siteping. Il expose la liste, la recherche et le changement de statut des feedbacks via Streamable HTTP. Il accepte tout `SitepingStore`, ne nécessite pas Prisma et ne requiert pas de service séparé.
 
 Le handler utilise la version 2 stable du SDK TypeScript et prend en charge la spécification MCP du 2026-07-28. Son mode de compatibilité stateless par défaut accepte aussi les anciens clients compatibles. Le serveur ne conserve pas de session MCP par client.
 
-## Installer la dépendance MCP optionnelle
-
-Le point d’entrée MCP a une dépendance peer optionnelle. Installez-la uniquement dans une application qui importe le point d’entrée MCP. Une application qui utilise seulement l’API REST n’en a pas besoin.
+## Installation
 
 ```bash
-npm install @siteping/adapter-prisma @modelcontextprotocol/server@^2.2.0
+npm install @siteping/mcp
 ```
 
-Si l’application dépend déjà de `@siteping/adapter-prisma`, installez uniquement `@modelcontextprotocol/server@^2.2.0`. Exécutez le serveur avec Node.js 20 ou une version ultérieure.
+Le package installe le SDK MCP TypeScript comme dépendance d’exécution. Utilisez Node.js 20 ou une version ultérieure.
 
 ## Créer le handler
 
-Utilisez le même `SitepingStore` que votre API Siteping. Pour un déploiement de production avec persistance, transmettez votre client Prisma existant à `PrismaStore` :
+Le handler accepte tout `SitepingStore`. Prisma n’est pas nécessaire ; cet exemple utilise `PrismaStore` comme un adapter de production persistant parmi d’autres. Pour un autre store, transmettez ce store à la place :
 
 ```ts
 import { PrismaStore } from "@siteping/adapter-prisma";
-import { createSitepingMcpHandler } from "@siteping/adapter-prisma/mcp";
+import { createSitepingMcpHandler } from "@siteping/mcp";
 import { prisma } from "@/lib/prisma";
 
 const allowedOrigins = process.env.SITEPING_MCP_ALLOWED_ORIGINS
@@ -162,7 +160,7 @@ Les entrées utilisent des schémas stricts. Les champs inconnus échouent à la
 
 Les résultats contiennent uniquement `id`, `type`, `message`, `status`, `url`, `urlPattern` et les trois horodatages. Les informations d'auteur, les identifiants client et propriétaire, les annotations, les captures d'écran et les diagnostics sont exclus. L'outil de statut est absent si le store n'implémente pas `verifyProjectOwnership`. Chaque écriture vérifie le projet configuré avant la modification.
 
-Exécutez `bun run smoke:mcp` pour vérifier HTTP, les jetons signés et les deux générations du protocole. Pour vérifier aussi un serveur Next actif, ajoutez son URL de base accessible et son URL MCP publique configurée comme deux arguments. Par exemple, exécutez `bun run smoke:mcp http://127.0.0.1:3000 https://feedback.example.com/api/siteping/mcp` avec un serveur configuré pour cette ressource.
+Exécutez d’abord `bun run build` afin que le smoke test charge le point d’entrée compilé de `@siteping/mcp`, puis exécutez `bun run smoke:mcp` pour vérifier HTTP, les jetons signés et les deux générations du protocole. Pour vérifier aussi un serveur Next actif, ajoutez son URL de base accessible et son URL MCP publique configurée comme deux arguments. Par exemple, exécutez `bun run smoke:mcp http://127.0.0.1:3000 https://feedback.example.com/api/siteping/mcp` avec un serveur configuré pour cette ressource.
 
 Par exemple, un appel réussi à `list_feedback` peut renvoyer :
 

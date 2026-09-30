@@ -23,6 +23,11 @@
       "component": "adapter-prisma",
       "bump-minor-pre-major": true
     },
+    "packages/mcp": {
+      "release-type": "node",
+      "component": "mcp",
+      "bump-minor-pre-major": true
+    },
     "packages/adapter-memory": {
       "release-type": "node",
       "component": "adapter-memory",

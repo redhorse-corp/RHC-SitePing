@@ -1,4 +1,4 @@
-import type { SitepingMcpOptions } from "@siteping/adapter-prisma/mcp";
+import type { SitepingMcpOptions } from "@siteping/mcp";
 
 type Environment = Readonly<Record<string, string | undefined>>;
 type SitepingMcpEnvironmentOptions = Omit<SitepingMcpOptions, "store">;

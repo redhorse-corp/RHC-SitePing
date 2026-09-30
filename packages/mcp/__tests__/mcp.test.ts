@@ -5,7 +5,7 @@ import { createCollectionStore, type FeedbackCreateInput, type FeedbackRecord } 
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { createSitepingMcpHandler } from "../src/mcp.js";
+import { createSitepingMcpHandler } from "../src/index.js";
 
 const resourceUrl = new URL("https://mcp.siteping.test/api/siteping/mcp");
 const projectName = "project-a";

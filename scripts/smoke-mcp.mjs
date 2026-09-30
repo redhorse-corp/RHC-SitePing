@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { MemoryStore } from "../packages/adapter-memory/src/index.js";
-import { createSitepingMcpHandler } from "../packages/adapter-prisma/src/mcp.js";
 
-const requireFromAdapter = createRequire(new URL("../packages/adapter-prisma/package.json", import.meta.url));
-const { Client, StreamableHTTPClientTransport } = requireFromAdapter("@modelcontextprotocol/client");
-const { exportJWK, generateKeyPair, SignJWT } = requireFromAdapter("jose");
+const requireFromMcp = createRequire(new URL("../packages/mcp/package.json", import.meta.url));
+const { createSitepingMcpHandler } = requireFromMcp("@siteping/mcp");
+const { Client, StreamableHTTPClientTransport } = requireFromMcp("@modelcontextprotocol/client");
+const { exportJWK, generateKeyPair, SignJWT } = requireFromMcp("jose");
 
 const previousNodeEnv = process.env.NODE_ENV;
 process.env.NODE_ENV = "development";

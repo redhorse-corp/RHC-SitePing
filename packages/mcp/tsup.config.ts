@@ -5,6 +5,6 @@ export default defineConfig(
   sitepingLibrary({
     platform: "node",
     target: "node18",
-    external: ["@prisma/client"],
+    external: ["@modelcontextprotocol/server"],
   }),
 );

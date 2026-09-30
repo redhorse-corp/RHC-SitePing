@@ -2,17 +2,12 @@ import { isIP } from "node:net";
 import type { JWSAlgorithm, JWTPayload } from "jose";
 import { createRemoteJWKSet, customFetch, errors, jwtVerify } from "jose";
 
-/** OIDC issuer and API-audience JWT verification settings. */
-export interface OidcOptions {
+export interface OidcVerificationOptions {
   issuer: string;
   audience: string;
   jwksUri: string;
   rolesClaim?: string;
   adminRoles?: readonly string[];
-  /** Allow an authenticated feedback owner to delete their own feedback. Defaults to true. */
-  allowOwnerDeletes?: boolean;
-  /** Require an administrator role for GET requests, including publicEndpoints overrides. */
-  requireAdminForRead?: boolean;
 }
 
 export interface OidcPrincipal {
@@ -79,7 +74,7 @@ function isJwksDocument(value: unknown): value is { keys: unknown[] } {
 }
 
 /** Create one cached remote-JWKS verifier per handler. */
-export function createOidcVerifier(options: OidcOptions): (token: string) => Promise<OidcPrincipal> {
+export function createOidcVerifier(options: OidcVerificationOptions): (token: string) => Promise<OidcPrincipal> {
   if (!options.issuer || !options.audience) {
     throw new TypeError("[siteping] OIDC issuer and audience must be non-empty strings.");
   }

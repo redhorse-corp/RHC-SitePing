@@ -1,4 +1,4 @@
-import { createSitepingMcpHandler } from "@siteping/adapter-prisma/mcp";
+import { createSitepingMcpHandler } from "@siteping/mcp";
 import { memoryStore } from "./memory-store";
 import { sitepingMcpOptionsFromEnv } from "./siteping-mcp-config";
 

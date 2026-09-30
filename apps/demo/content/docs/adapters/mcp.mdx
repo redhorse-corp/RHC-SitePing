@@ -3,27 +3,25 @@ title: MCP server
 description: Connect an MCP client to project-scoped Siteping feedback.
 ---
 
-`@siteping/adapter-prisma/mcp` adds a Model Context Protocol server to the app that already hosts your Siteping store. It exposes feedback listing, search, and status changes over Streamable HTTP. It does not need a separate service.
+`@siteping/mcp` adds a standalone Model Context Protocol server to an app that already hosts a Siteping store. It exposes feedback listing, search, and status changes over Streamable HTTP. It accepts any `SitepingStore`, does not require Prisma, and does not need a separate service.
 
 The handler uses the stable TypeScript SDK v2 and supports the MCP specification dated 2026-07-28. Its default stateless legacy fallback also accepts compatible older clients. The server does not keep per-client MCP sessions.
 
-## Install the optional MCP peer
-
-The MCP entry point has an optional peer dependency. Install it only in an app that imports the MCP entry point. REST-only apps do not need it.
+## Install
 
 ```bash
-npm install @siteping/adapter-prisma @modelcontextprotocol/server@^2.2.0
+npm install @siteping/mcp
 ```
 
-If the app already depends on `@siteping/adapter-prisma`, install only `@modelcontextprotocol/server@^2.2.0`. Run the server on Node.js 20 or later.
+The package installs the TypeScript MCP SDK as a runtime dependency. Run the server on Node.js 20 or later.
 
 ## Create the handler
 
-Use the same `SitepingStore` that backs your Siteping API. For a durable production deployment, pass your existing Prisma client to `PrismaStore`:
+The handler accepts any `SitepingStore`. Prisma is not required; this example uses `PrismaStore` as one durable production adapter. For another store, pass that store instead:
 
 ```ts
 import { PrismaStore } from "@siteping/adapter-prisma";
-import { createSitepingMcpHandler } from "@siteping/adapter-prisma/mcp";
+import { createSitepingMcpHandler } from "@siteping/mcp";
 import { prisma } from "@/lib/prisma";
 
 const allowedOrigins = process.env.SITEPING_MCP_ALLOWED_ORIGINS
@@ -162,7 +160,7 @@ Tool inputs use strict schemas, so unknown fields fail validation. Siteping deri
 
 Results contain only `id`, `type`, `message`, `status`, `url`, `urlPattern`, and the three timestamps. Author details, client and owner identifiers, annotations, screenshots, and diagnostics are omitted. The status tool is absent when the store lacks `verifyProjectOwnership`. Every status write checks the configured project before updating.
 
-Run `bun run smoke:mcp` to exercise real HTTP, signed tokens, and both protocol eras. To check a running Next host too, pass its reachable base URL and configured public MCP URL as two arguments. For example, run `bun run smoke:mcp http://127.0.0.1:3000 https://feedback.example.com/api/siteping/mcp` against a host configured for that resource.
+Run `bun run build` first so the smoke resolves the compiled `@siteping/mcp` entry point, then run `bun run smoke:mcp` to exercise real HTTP, signed tokens, and both protocol eras. To check a running Next host too, pass its reachable base URL and configured public MCP URL as two arguments. For example, run `bun run smoke:mcp http://127.0.0.1:3000 https://feedback.example.com/api/siteping/mcp` against a host configured for that resource.
 
 For example, a successful `list_feedback` call can return:
 
