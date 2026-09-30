@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Features
+
+* expose feedback-owner verification for OIDC authorization
+
 ## [0.5.3](https://github.com/NeosiaNexus/SitePing/compare/adapter-memory-v0.5.2...adapter-memory-v0.5.3) (2026-07-28)
 
 

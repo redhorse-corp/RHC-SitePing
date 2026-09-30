@@ -12,6 +12,7 @@ L'inbox lit et écrit à travers une petite abstraction, que vous pouvez fournir
 ```
 
 Parle à votre [endpoint d'adapter](/fr/docs/adapters/prisma) : `GET` pour les listes, `PATCH` pour les statuts, `DELETE` pour les suppressions, toujours avec `cache: "no-store"`. Les erreurs arrivent typées par `code` (`AUTH` pour 401/403, `VALIDATION` pour les autres 4xx, `SERVER` pour les 5xx, `NETWORK` pour les échecs de fetch). Il n'y a volontairement **aucun réessai** — une interface de tri doit vous dire les choses tout de suite.
+L'inbox n'est pas une frontière d'authentification : protégez la page hôte avec le contrôle de connexion/rôle de votre application et imposez aussi l'accès sur l'endpoint. Avec OIDC, `requireAdminForRead: true` bloque les GET des non-admins et `allowOwnerDeletes: false` réserve toute suppression aux administrateurs. Le `POST` public reste disponible pour les envois du widget.
 
 ## Mode store
 

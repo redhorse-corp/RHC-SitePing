@@ -12,6 +12,7 @@ The inbox reads and writes through a small abstraction with three ways to supply
 ```
 
 Talks to your [adapter endpoint](/docs/adapters/prisma): `GET` for lists, `PATCH` for statuses, `DELETE` for removals, always with `cache: "no-store"`. Errors arrive typed by `code` (`AUTH` for 401/403, `VALIDATION` for other 4xx, `SERVER` for 5xx, `NETWORK` for fetch failures). There are deliberately **no retries** — a triage UI should tell you immediately.
+The inbox is not an authentication boundary: protect the host page with your app's login/role check and enforce access on the endpoint too. For OIDC, `requireAdminForRead: true` blocks non-admin GETs, and `allowOwnerDeletes: false` reserves every deletion to administrators. Public `POST` remains available for widget submissions.
 
 ## Store mode
 

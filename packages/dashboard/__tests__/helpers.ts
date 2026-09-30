@@ -68,6 +68,8 @@ export function makeRecord(overrides: Partial<FeedbackRecord> = {}): FeedbackRec
     viewport: "1280×800",
     userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/120",
     clientId: "client-uuid-1",
+    ownerIssuer: null,
+    ownerSubject: null,
     resolvedAt: null,
     createdAt: new Date("2026-07-20T10:00:00.000Z"),
     updatedAt: new Date("2026-07-20T10:00:00.000Z"),

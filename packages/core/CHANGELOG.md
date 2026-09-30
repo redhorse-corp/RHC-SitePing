@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Features
+
+* add trusted OIDC owner metadata and per-record permission contracts
+
 ## [0.7.2](https://github.com/NeosiaNexus/SitePing/compare/core-v0.7.1...core-v0.7.2) (2026-05-06)
 
 

@@ -33,8 +33,8 @@ function toastStatusLabel(label: string, locale: string): string {
  * Linear-style triage inbox for SitePing feedback.
  *
  * Renders in plain DOM (no Shadow DOM) with all styles scoped under
- * `.spd-root`. Keyboard-first: j/k navigate, Enter opens, e/p/x change
- * status, u undoes, "?" shows the full cheat sheet.
+ * `.spd-root`. Keyboard-first: j/k navigate, Enter opens, and managers get
+ * status/undo shortcuts; "?" shows the shortcuts available to the user.
  */
 export function SitepingInbox(props: SitepingInboxProps): ReactElement {
   const {
@@ -118,6 +118,7 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
 
   const changeStatus = useCallback(
     async (id: string, status: FeedbackStatus): Promise<void> => {
+      if (state.canManage === false) return;
       const ok = await runMutation(() => state.changeStatus(id, status));
       if (ok) {
         const label = toastStatusLabel(getStatusLabel(status, t), locale);
@@ -129,6 +130,7 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
 
   const deleteFeedback = useCallback(
     async (id: string): Promise<void> => {
+      if (state.canManage === false) return;
       state.closeFeedback();
       const ok = await runMutation(() => state.deleteFeedback(id));
       if (ok) showToast(t("inbox.deleted"), false);
@@ -137,6 +139,7 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
   );
 
   const undo = useCallback(async (): Promise<void> => {
+    if (state.canManage === false) return;
     dismissToast();
     await runMutation(() => state.undo());
   }, [dismissToast, runMutation, state]);
@@ -269,19 +272,22 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
           state.openFeedback(state.focusedId);
           break;
         case "e":
+          if (state.canManage === false) return;
           toggleStatus("resolved", actionId);
           break;
         case "p":
+          if (state.canManage === false) return;
           toggleStatus("in_progress", actionId);
           break;
         case "x":
+          if (state.canManage === false) return;
           toggleStatus("wont_fix", actionId);
           break;
         case "r":
           void state.refresh();
           break;
         case "u":
-          if (!state.pendingUndo) return;
+          if (state.canManage === false || !state.pendingUndo) return;
           void undo();
           break;
         case "/":
@@ -320,6 +326,10 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
   const showError = state.view === "error";
   const showEmpty = state.view === "empty";
   const remaining = state.total !== null ? Math.max(0, state.total - state.items.length) : 0;
+  const visibleToast = useMemo(
+    () => (state.canManage === false && toast?.undoable ? { ...toast, undoable: false } : toast),
+    [state.canManage, toast],
+  );
 
   return (
     <InboxUiProvider value={ui}>
@@ -372,6 +382,7 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
               key={state.opened.id}
               record={state.opened}
               overlay={!wide}
+              canManage={state.canManage}
               deepLinkParam={deepLinkParam}
               onClose={state.closeFeedback}
               onChangeStatus={(id, status) => {
@@ -391,15 +402,19 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
           <span className="spd-hint">
             <kbd className="spd-kbd">⏎</kbd> {t("hints.open")}
           </span>
-          <span className="spd-hint">
-            <kbd className="spd-kbd">e</kbd> {t("hints.resolve")}
-          </span>
-          <span className="spd-hint">
-            <kbd className="spd-kbd">p</kbd> {t("hints.inProgress")}
-          </span>
-          <span className="spd-hint">
-            <kbd className="spd-kbd">x</kbd> {t("hints.wontFix")}
-          </span>
+          {state.canManage === false ? null : (
+            <>
+              <span className="spd-hint">
+                <kbd className="spd-kbd">e</kbd> {t("hints.resolve")}
+              </span>
+              <span className="spd-hint">
+                <kbd className="spd-kbd">p</kbd> {t("hints.inProgress")}
+              </span>
+              <span className="spd-hint">
+                <kbd className="spd-kbd">x</kbd> {t("hints.wontFix")}
+              </span>
+            </>
+          )}
           <span className="spd-hint">
             <kbd className="spd-kbd">?</kbd> {t("hints.help")}
           </span>
@@ -408,13 +423,15 @@ export function SitepingInbox(props: SitepingInboxProps): ReactElement {
           {resultsMsg}
         </div>
         <Toast
-          toast={toast}
+          toast={visibleToast}
           onUndo={() => {
             void undo();
           }}
           onDismiss={dismissToast}
         />
-        {shortcutsOpen ? <ShortcutsOverlay onClose={() => setShortcutsOpen(false)} /> : null}
+        {shortcutsOpen ? (
+          <ShortcutsOverlay canManage={state.canManage} onClose={() => setShortcutsOpen(false)} />
+        ) : null}
       </section>
     </InboxUiProvider>
   );

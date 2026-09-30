@@ -49,6 +49,8 @@ describe("SitepingFeedback model", () => {
       "status",
       "url",
       "screenshotRegion",
+      "ownerIssuer",
+      "ownerSubject",
       "viewport",
       "userAgent",
       "authorName",
@@ -65,6 +67,10 @@ describe("SitepingFeedback model", () => {
     }
   });
 
+  it("owner identity columns are nullable strings", () => {
+    expect(fields.ownerIssuer).toEqual({ type: "String", optional: true });
+    expect(fields.ownerSubject).toEqual({ type: "String", optional: true });
+  });
   it("id is a String @id with cuid() default", () => {
     expect(fields.id.type).toBe("String");
     expect(fields.id.isId).toBe(true);

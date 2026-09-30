@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Features
+
+* preserve OIDC feedback owner metadata in local storage
+
 ## [0.5.4](https://github.com/NeosiaNexus/SitePing/compare/adapter-localstorage-v0.5.3...adapter-localstorage-v0.5.4) (2026-09-03)
 
 

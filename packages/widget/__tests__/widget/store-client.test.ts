@@ -75,6 +75,8 @@ function makeFeedbackRecord(overrides?: Partial<FeedbackRecord>): FeedbackRecord
     authorName: "Alice",
     authorEmail: "alice@test.com",
     clientId: "uuid-123",
+    ownerIssuer: null,
+    ownerSubject: null,
     urlPattern: null,
     resolvedAt: null,
     createdAt: now,

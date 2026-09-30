@@ -41,3 +41,12 @@ describe("Drawer — author line", () => {
     expect(author?.textContent).not.toContain("<>");
   });
 });
+
+describe("Drawer — permissions", () => {
+  it("keeps mutation controls when permission metadata is absent", () => {
+    const { container } = renderDrawer();
+
+    expect(container.querySelector(".spd-status-menu")).not.toBeNull();
+    expect(container.querySelector(".spd-danger-zone .spd-btn-danger-ghost")).not.toBeNull();
+  });
+});

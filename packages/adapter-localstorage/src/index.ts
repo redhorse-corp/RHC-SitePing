@@ -133,6 +133,9 @@ export class LocalStorageStore implements SitepingStore {
   verifyProjectOwnership(id: string, projectName: string): Promise<boolean> {
     return this.engine.verifyProjectOwnership(id, projectName);
   }
+  verifyFeedbackOwner(id: string, issuer: string, subject: string): Promise<boolean> {
+    return this.engine.verifyFeedbackOwner(id, issuer, subject);
+  }
 
   /** Remove all data from localStorage for this store key. */
   clear(): void {
@@ -149,7 +152,13 @@ export class LocalStorageStore implements SitepingStore {
 // ---------------------------------------------------------------------------
 
 /** Nullable record fields that a blob written by an older release may lack. */
-type LegacyFeedbackKey = "urlPattern" | "screenshotUrl" | "screenshotRegion" | "diagnostics";
+type LegacyFeedbackKey =
+  | "urlPattern"
+  | "screenshotUrl"
+  | "screenshotRegion"
+  | "diagnostics"
+  | "ownerIssuer"
+  | "ownerSubject";
 type LegacyAnnotationKey = "anchorKey";
 
 type StoredAnnotation = Omit<Serialized<AnnotationRecord>, LegacyAnnotationKey> &
@@ -181,5 +190,7 @@ function reviveFeedback(raw: StoredFeedback): FeedbackRecord {
     screenshotUrl: raw.screenshotUrl ?? null,
     screenshotRegion: raw.screenshotRegion ?? null,
     diagnostics: raw.diagnostics ?? null,
+    ownerIssuer: raw.ownerIssuer ?? null,
+    ownerSubject: raw.ownerSubject ?? null,
   };
 }

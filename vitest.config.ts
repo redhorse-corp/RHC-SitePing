@@ -10,7 +10,7 @@ export default defineConfig({
     conditions: ["import", "module", "default"],
   },
   test: {
-    include: ["packages/**/__tests__/**/*.test.{ts,tsx}"],
+    include: ["packages/**/__tests__/**/*.test.{ts,tsx}", "apps/demo/src/lib/__tests__/**/*.test.ts"],
     setupFiles: ["packages/widget/__tests__/setup-i18n.ts"],
     // Type-level tests: *.test-d.ts files are statically checked by tsc via
     // vitest's typecheck mode (they never execute). They lock the public

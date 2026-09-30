@@ -35,13 +35,15 @@ Chaque mode est exporté séparément — `InboxEndpointOptions`, `InboxStoreOpt
 
 ## Ce que vous récupérez
 
-**Données** — `items` (toutes les pages chargées), `total` (`null` jusqu'à l'arrivée de la première page), `counts` (totaux par statut, au mieux), `loading`, `loadingMore`, `error`, `hasMore`, `loadMore()`, `refresh()`.
+**Données** — `items` (toutes les pages chargées), `total` (`null` jusqu'à l'arrivée de la première page), `counts` (totaux par statut, au mieux), `canManage` optionnel (toute source peut le fournir ; la source endpoint transmet les permissions de liste ; `undefined` si la source l'omet), `loading`, `loadingMore`, `error`, `hasMore`, `loadMore()`, `refresh()`.
 
 **Filtres** — `project`/`setProject`, `status`/`setStatus` (démarre sur `"open"`), `type`/`setType`, `search`/`setSearch`. La recherche met l'état à jour instantanément et temporise le rechargement de 250 ms ; les requêtes sont nettoyées et plafonnées à 200 caractères.
 
 **Focus et tiroir** — `focusedId`, `focus(id)`, `focusNext()`, `focusPrev()`, `openedId`, `opened` (le feedback ouvert — il reste disponible même si un filtre retire sa ligne), `openFeedback(id)`, `closeFeedback()`.
 
 **Mutations** — `changeStatus(id, status)`, `deleteFeedback(id)`, `pendingUndo`, `undo()`.
+
+Quand `canManage === false`, l'inbox fournie masque les actions de statut et de suppression, y compris l'annulation. Les interfaces headless personnalisées devraient appliquer la même règle ; le serveur reste la frontière d'autorisation.
 
 ## `view` — l'algèbre des drapeaux en moins
 

@@ -19,6 +19,7 @@ import type {
   AnnotationResponse,
   FeedbackRecord,
   FeedbackResponse,
+  FeedbackResponseList,
   FeedbackUpdateInput,
   SitepingConfig,
   SitepingStore,
@@ -84,27 +85,39 @@ describe("FeedbackUpdateInput closure invariant", () => {
 });
 
 describe("wire types derived from record types", () => {
-  it("serializes dates and omits clientId on FeedbackResponse", () => {
+  it("serializes dates and omits clientId and owner ids on FeedbackResponse", () => {
     expectTypeOf<FeedbackResponse["createdAt"]>().toEqualTypeOf<string>();
     expectTypeOf<FeedbackResponse["resolvedAt"]>().toEqualTypeOf<string | null>();
     expectTypeOf<FeedbackResponse["annotations"]>().toEqualTypeOf<AnnotationResponse[]>();
     expectTypeOf<AnnotationResponse["createdAt"]>().toEqualTypeOf<string>();
-    expectTypeOf<keyof FeedbackResponse>().toEqualTypeOf<Exclude<keyof FeedbackRecord, "clientId">>();
-    // Non-date fields pass through untouched.
+    expectTypeOf<keyof FeedbackResponse>().toEqualTypeOf<
+      Exclude<keyof FeedbackRecord, "clientId" | "ownerIssuer" | "ownerSubject"> | "permissions"
+    >();
+    expectTypeOf<FeedbackResponse["permissions"]>().toEqualTypeOf<
+      { canDelete: boolean; canChangeStatus: boolean } | undefined
+    >();
     expectTypeOf<FeedbackResponse["screenshotRegion"]>().toEqualTypeOf<FeedbackRecord["screenshotRegion"]>();
+  });
+
+  it("keeps list-level capabilities optional", () => {
+    expectTypeOf<FeedbackResponseList["permissions"]>().toEqualTypeOf<{ canManage: boolean } | undefined>();
   });
 });
 
 describe("SitepingStore contract", () => {
-  it("is satisfied by the collection-store engine, including verifyProjectOwnership", () => {
+  it("is satisfied by the collection-store engine", () => {
     const engine = createCollectionStore({ load: () => [], persist: () => {}, generateId: () => "id" });
     expectTypeOf(engine).toExtend<SitepingStore>();
     expectTypeOf(engine.verifyProjectOwnership).returns.resolves.toEqualTypeOf<boolean>();
+    expectTypeOf(engine.verifyFeedbackOwner).returns.resolves.toEqualTypeOf<boolean>();
   });
 
-  it("keeps verifyProjectOwnership optional for minimal adapters", () => {
+  it("keeps ownership checks optional for minimal adapters", () => {
     expectTypeOf<SitepingStore["verifyProjectOwnership"]>().toEqualTypeOf<
       ((id: string, projectName: string) => Promise<boolean>) | undefined
+    >();
+    expectTypeOf<SitepingStore["verifyFeedbackOwner"]>().toEqualTypeOf<
+      ((id: string, issuer: string, subject: string) => Promise<boolean>) | undefined
     >();
   });
 });

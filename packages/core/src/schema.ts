@@ -113,6 +113,8 @@ const _SITEPING_MODELS = {
       authorName: { type: "String" },
       authorEmail: { type: "String" },
       clientId: { type: "String", isUnique: true },
+      ownerIssuer: { type: "String", optional: true },
+      ownerSubject: { type: "String", optional: true },
       resolvedAt: { type: "DateTime", optional: true },
       createdAt: { type: "DateTime", default: "now()" },
       updatedAt: { type: "DateTime", isUpdatedAt: true },

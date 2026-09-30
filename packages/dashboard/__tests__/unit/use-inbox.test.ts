@@ -79,6 +79,7 @@ describe("useSitepingInbox — initial fetch & counts", () => {
     expect(result.current.total).toBe(3);
     expect(result.current.counts).toMatchObject({ all: 6, open: 3, in_progress: 1, resolved: 1, wont_fix: 1 });
     expect(result.current.projects).toEqual(["demo"]);
+    expect(result.current.canManage).toBeUndefined();
   });
 
   it("normalizes a single project string into an array", async () => {
@@ -421,6 +422,7 @@ describe("useSitepingInbox — source selection", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(ids(result.current.items)).toEqual(["s1"]);
     expect(getFeedbacks).toHaveBeenCalled();
+    expect(result.current.canManage).toBeUndefined();
   });
 
   it("builds an endpoint source and forwards a headers function", async () => {
@@ -440,6 +442,22 @@ describe("useSitepingInbox — source selection", () => {
     const sent = init.headers as Record<string, string>;
     expect(sent.Authorization).toBe("Bearer k");
     expect(sent["X-From"]).toBe("fn");
+    fetchSpy.mockRestore();
+  });
+
+  it("propagates endpoint list permissions into inbox state", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(JSON.stringify({ feedbacks: [], total: 0, permissions: { canManage: false } }), { status: 200 }),
+      );
+
+    const { result } = renderHook(() =>
+      useSitepingInbox({ projects: "demo", endpoint: "https://api.example/siteping" }),
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.canManage).toBe(false);
     fetchSpy.mockRestore();
   });
 

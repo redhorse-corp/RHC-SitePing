@@ -1126,6 +1126,8 @@ export class DetailView {
     // Resolve / Reopen
     this.resolveBtn = document.createElement("button");
     this.resolveBtn.type = "button";
+    this.resolveBtn.hidden = feedback.permissions?.canChangeStatus === false;
+    this.resolveBtn.style.display = this.resolveBtn.hidden ? "none" : "";
     if (isClosed) {
       this.resolveBtn.className = "sp-detail-btn-reopen";
       this.resolveBtn.appendChild(parseSvg(ICON_UNDO));
@@ -1143,6 +1145,8 @@ export class DetailView {
 
     // Delete
     this.deleteBtn = document.createElement("button");
+    this.deleteBtn.hidden = feedback.permissions?.canDelete === false;
+    this.deleteBtn.style.display = this.deleteBtn.hidden ? "none" : "";
     this.deleteBtn.type = "button";
     this.deleteBtn.className = "sp-detail-btn-delete";
     this.deleteBtn.appendChild(parseSvg(ICON_TRASH));
@@ -1434,7 +1438,9 @@ export class DetailView {
   // -----------------------------------------------------------------------
 
   private async handleResolve(): Promise<void> {
-    if (this.isProcessing || !this.currentFeedback) return;
+    if (this.isProcessing || !this.currentFeedback || this.currentFeedback.permissions?.canChangeStatus === false) {
+      return;
+    }
     this.isProcessing = true;
 
     if (this.resolveBtn) this.setButtonLoading(this.resolveBtn);
@@ -1452,7 +1458,7 @@ export class DetailView {
   }
 
   private async handleDelete(): Promise<void> {
-    if (this.isProcessing || !this.currentFeedback) return;
+    if (this.isProcessing || !this.currentFeedback || this.currentFeedback.permissions?.canDelete === false) return;
     this.isProcessing = true;
 
     if (this.deleteBtn) this.setButtonLoading(this.deleteBtn);

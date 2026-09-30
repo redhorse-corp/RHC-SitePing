@@ -41,6 +41,8 @@ function makeRecord(seed: RecordSeed): FeedbackRecord {
     viewport: "1280x720",
     userAgent: "test",
     clientId: "client",
+    ownerIssuer: null,
+    ownerSubject: null,
     resolvedAt: null,
     createdAt: EPOCH,
     updatedAt: EPOCH,

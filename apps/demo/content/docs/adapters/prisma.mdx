@@ -30,8 +30,9 @@ Any framework that speaks Web `Request`/`Response` (Hono, Remix, SvelteKit, …)
 | `prisma` | `SitepingPrismaClient` | — | Your Prisma client. Required unless you pass `store` |
 | `store` | `SitepingStore` | — | Use any store instead of Prisma (takes precedence) |
 | `apiKey` | `string` | — | Enables Bearer auth. Requests send `Authorization: Bearer <key>` |
-| `publicEndpoints` | `SitepingHttpMethod[]` | `["POST", "OPTIONS"]` when `apiKey` is set | Methods that skip auth. **Passing a value replaces the default** — include `"POST"` yourself or the widget can no longer submit |
-| `requireAuthForDestructive` | `boolean` | `true` | Without an `apiKey`, PATCH and DELETE answer `401`. In `NODE_ENV=production` the factory refuses to start without an `apiKey` |
+| `oidc` | `OidcOptions` | — | Verify signed JWTs using `issuer`, `audience` and `jwksUri`; `rolesClaim` defaults to `roles`, `adminRoles` to `["admin"]`, `allowOwnerDeletes` to `true`, and `requireAdminForRead` to `false` |
+| `publicEndpoints` | `SitepingHttpMethod[]` | `["POST", "OPTIONS"]` when `apiKey` or `oidc` is set | Methods that allow anonymous requests. **Passing a value replaces the default**; OIDC still protects PATCH/DELETE, and `requireAdminForRead` can restrict GET |
+| `requireAuthForDestructive` | `boolean` | `true` | Legacy switch for unauthenticated PATCH/DELETE. In production, `true` requires `apiKey` or OIDC at startup; `false` permits startup without either and is safe only behind trusted auth middleware. OIDC rejects `false` |
 | `redactUnauthenticatedEmails` | `boolean` | `true` | See [what responses expose](#what-responses-expose) |
 | `allowedOrigins` | `string[]` | — | Exact-match CORS allowlist. **No wildcard support** — `["*"]` matches nothing; unset means no CORS headers at all |
 | `screenshotStorage` | `ScreenshotStorage` | — | Upload screenshots somewhere real instead of inlining data URLs. Ignored when you pass a custom `store` |
@@ -40,14 +41,50 @@ Any framework that speaks Web `Request`/`Response` (Hono, Remix, SvelteKit, …)
 
 ## The security model, honestly
 
-- **Reads are public by default.** Without an `apiKey`, anyone who knows the URL can list feedbacks (with emails redacted — see below).
-- **Destructive calls are not.** PATCH and DELETE answer `401` unless you set an `apiKey` or explicitly opt out with `requireAuthForDestructive: false`. In production the factory throws at startup rather than run without a key.
+- Without `apiKey` or OIDC, reads are public by default. With OIDC, GET requires a valid bearer token unless `"GET"` is explicitly listed in `publicEndpoints`; set `oidc.requireAdminForRead: true` to require a configured administrator even for a public GET.
+- POST and OPTIONS are public by default when `apiKey` or OIDC is configured. A valid OIDC token on POST binds the record's internal owner to the token's verified issuer and subject; it does not fill `authorName` or `authorEmail` from claims. Anonymous submissions remain unowned; use widget `identity` to prefill author details from the host app.
+- With OIDC, PATCH and delete-all require an administrator. A single DELETE is allowed to an administrator or the feedback's owner by default; set `oidc.allowOwnerDeletes: false` to require an administrator for every delete. A valid `apiKey` remains an administrator credential, including when OIDC is also configured.
+- `publicEndpoints` cannot bypass OIDC authorization for PATCH or DELETE, or the `requireAdminForRead` role check. `requireAuthForDestructive: false` is rejected with OIDC; without OIDC, disable it only behind your own auth middleware.
 - `OPTIONS` is always public — preflights must work.
 
 ### What responses expose
 
-- `clientId` is stripped from **every** response.
-- `authorEmail` is blanked unless the request carries a valid `Authorization: Bearer` header. The one exception: a successful `POST` echoes the email back to its author.
+- `clientId`, `ownerIssuer` and `ownerSubject` are stripped from every API response.
+- By default, `authorEmail` is blanked in unauthenticated GET/PATCH responses; `redactUnauthenticatedEmails: false` opts out. POST responses echo the submitted email, including anonymous public submissions.
+
+### Configure OIDC
+
+```ts
+createSitepingHandler({
+  prisma,
+  oidc: {
+    issuer: process.env.OIDC_ISSUER!,
+    audience: process.env.SITEPING_API_AUDIENCE!,
+    jwksUri: process.env.OIDC_JWKS_URI!,
+    // Protect dashboard reads and require admins for every delete.
+    requireAdminForRead: true,
+    allowOwnerDeletes: false,
+  },
+});
+```
+
+`issuer` and `jwksUri` must use HTTPS outside development (loopback HTTP is allowed in development). The configured roles claim may be a string or an array of strings; any exact `adminRoles` match grants administrator permissions.
+
+### Container environment for the demo endpoint
+
+The demo's `/api/siteping` route reads these server-side environment variables:
+
+```dotenv
+SITEPING_OIDC_ISSUER=https://issuer.example.com/
+SITEPING_OIDC_AUDIENCE=siteping-api
+SITEPING_OIDC_JWKS_URI=https://issuer.example.com/.well-known/jwks.json
+SITEPING_OIDC_ROLES_CLAIM=groups
+SITEPING_OIDC_ADMIN_ROLES=siteping-admin,siteping-owner
+SITEPING_OIDC_ALLOW_OWNER_DELETES=false
+SITEPING_OIDC_REQUIRE_ADMIN_FOR_READ=true
+```
+
+Set the issuer, audience, and JWKS URI together to enable OIDC. The roles claim defaults to `roles` and admin roles to `admin`. For this demo endpoint, admin-only reads default to `true` and owner deletes to `false`; set `SITEPING_OIDC_REQUIRE_ADMIN_FOR_READ=false` only if non-admin users should read feedback. `SITEPING_OIDC_ROLES_CLAIM=groups` selects a claim in the access token; it is not an OIDC scope. `profile` and `email` scopes are not required for authorization or ownership. If all OIDC variables are absent, the demo keeps its original open permissions; partial configuration fails at startup. **That fallback makes unauthenticated PATCH and DELETE public.** Keep these variables server-side; never use a `NEXT_PUBLIC_` prefix.
 
 ## HTTP reference
 
@@ -55,8 +92,8 @@ One endpoint, five methods. All bodies are JSON.
 
 | Method | Purpose | Success |
 |---|---|---|
-| `POST` | Create feedback (widget submissions) | `201` + record. A replayed `clientId` returns the existing record instead of failing (and never notifies webhooks twice); a `clientId` already used by **another** project is refused with `409` |
-| `GET` | List feedbacks | `200` + `{ feedbacks, total }`, with `Cache-Control: private, max-age=5` |
+| `POST` | Create feedback (widget submissions) | `201` + record. With OIDC, a replayed `clientId` returns the existing record only to its owner or an administrator; others get `409`. Replays do not notify webhooks twice. A `clientId` used by another project gets `409` |
+| `GET` | List feedback | `200` + `{ feedbacks, total }`; with OIDC also includes `permissions: { canManage }` on the list and `permissions: { canChangeStatus, canDelete }` on each record. `requireAdminForRead: true` returns `403` to non-admins |
 | `PATCH` | Change a status | `200` + updated record |
 | `DELETE` | Delete one or all | `200` + `{ deleted: true }` |
 | `OPTIONS` | CORS preflight | `204` |
@@ -67,7 +104,7 @@ One endpoint, five methods. All bodies are JSON.
 
 **DELETE body:** `{ id, projectName }` for one record, or `{ projectName, deleteAll: true }` for everything in the project.
 
-**Errors:** invalid JSON → `400 { error }`; validation failure → `400 { errors: [{ field, message }] }`; unknown id → `404`; `clientId` owned by another project → `409 { error }`; missing table → `500` with a hint to run `npx prisma db push`; anything else → `500 { error: "Internal server error" }`.
+**Errors:** invalid JSON → `400 { error }`; validation failure → `400 { errors: [{ field, message }] }`; missing/invalid credentials → `401`; insufficient OIDC permission → `403`; unavailable JWKS service → `503`; unknown id → `404`; `clientId` used by another project or an unauthorized replay → `409 { error }`; missing table → `500` with a hint to run `npx prisma db push`; anything else → `500 { error: "Internal server error" }`.
 
 ### Validation limits worth knowing
 
@@ -75,8 +112,9 @@ One endpoint, five methods. All bodies are JSON.
 
 ## Database schema
 
-This is the exact schema the adapter needs — it's what `npx @siteping/cli sync` generates. Prefer the CLI; if you write it by hand, don't drop columns: the adapter writes `urlPattern`, `screenshotUrl`, and `anchorKey` on every insert, so a partial schema fails on the first submission.
+This is the exact schema the adapter needs — `npx @siteping/cli sync` generates it, including the nullable OIDC owner columns. Prefer the CLI; if you write it by hand, don't drop columns: the adapter writes `urlPattern`, `screenshotUrl`, and `anchorKey` on every insert, so a partial schema fails on the first submission.
 
+**Before enabling OIDC:** sync the Prisma schema, then apply the schema change with your migration workflow before deploying the adapter. Existing rows remain unowned; only authenticated OIDC submissions receive an owner.
 ```prisma
 model SitepingFeedback {
   id               String               @id @default(cuid())
@@ -94,6 +132,8 @@ model SitepingFeedback {
   authorName       String
   authorEmail      String
   clientId         String               @unique
+  ownerIssuer      String?
+  ownerSubject     String?
   resolvedAt       DateTime?
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
@@ -169,7 +209,7 @@ createSitepingHandler({
 });
 ```
 
-`type` is `"slack"`, `"discord"`, or `"generic"` (default — posts the record as JSON with the author's email unredacted, so treat generic webhook targets as trusted; `clientId` is stripped like everywhere else). Each call has a 5-second timeout, failures never block the submission, and an optional `onError(err, feedbackId)` lets you log them.
+`type` is `"slack"`, `"discord"`, or `"generic"` (default — posts the record as JSON with the author's email unredacted, so treat generic webhook targets as trusted; `clientId` and OIDC owner identifiers are stripped). Each call has a 5-second timeout, failures never block the submission, and an optional `onError(err, feedbackId)` lets you log them.
 
 Feedback text is typed by anonymous visitors, so the chat payloads are hardened: Slack text is escaped (a comment containing `<!channel>` is shown literally, never as a notification) and Discord messages are sent with mention parsing disabled (`allowed_mentions: { parse: [] }`) — a public form can't be used to ping your whole server.
 
@@ -177,7 +217,9 @@ Feedback text is typed by anonymous visitors, so the chat payloads are hardened:
 
 `createSitepingHandler({ store })` mounts any `SitepingStore` (the memory adapter, or your own) behind the same HTTP surface — same validation, auth, and redaction.
 
-Two caveats, straight from the source:
+Three caveats, straight from the source:
 
 - The cross-project ownership check on PATCH/DELETE runs for every store that implements the optional `verifyProjectOwnership` — the memory and localStorage adapters and anything built on `createCollectionStore` do. A hand-written store that omits it skips the check: any caller who knows a feedback `id` can then modify it regardless of `projectName`, so either implement the method (see [writing an adapter](/docs/adapters/writing-an-adapter#project-ownership)) or put the endpoint behind an `apiKey`.
+
+- With OIDC, only a configured administrator may change status or delete all feedback. A single DELETE also permits the owner by default when the store implements `verifyFeedbackOwner`; set `oidc.allowOwnerDeletes: false` to restrict every delete to administrators.
 - `screenshotStorage` and `caseInsensitiveSearch` only apply to the built-in Prisma path; with a custom store, handle screenshots inside your store.

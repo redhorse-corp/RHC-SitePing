@@ -329,6 +329,8 @@ export const BULK_CSS = `
 export interface BulkActionCallbacks {
   onResolve: (ids: string[]) => Promise<void>;
   onDelete: (ids: string[]) => Promise<void>;
+  canChangeStatus?: (ids: string[]) => boolean;
+  canDelete?: (ids: string[]) => boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -561,6 +563,14 @@ export class BulkActions {
     const resolve = this.t("bulk.resolve");
     const del = this.t("bulk.delete");
 
+    const ids = [...this.selected];
+    const canResolve = count === 0 || this.callbacks.canChangeStatus?.(ids) !== false;
+    const canDelete = count === 0 || this.callbacks.canDelete?.(ids) !== false;
+    this.resolveBtn.hidden = !canResolve;
+    this.resolveBtn.style.display = canResolve ? "" : "none";
+    this.deleteBtn.hidden = !canDelete;
+    this.deleteBtn.style.display = canDelete ? "" : "none";
+
     // Resolve button
     this.resolveBtn.replaceChildren();
     const resolveLabel = document.createElement("span");
@@ -613,7 +623,13 @@ export class BulkActions {
   }
 
   private async handleResolve(): Promise<void> {
-    if (this.isProcessing || this.selected.size === 0) return;
+    if (
+      this.isProcessing ||
+      this.selected.size === 0 ||
+      this.callbacks.canChangeStatus?.([...this.selected]) === false
+    ) {
+      return;
+    }
     this.isProcessing = true;
 
     const ids = [...this.selected];
@@ -632,9 +648,10 @@ export class BulkActions {
   }
 
   private async handleDelete(): Promise<void> {
-    if (this.isProcessing || this.selected.size === 0) return;
+    if (this.isProcessing || this.selected.size === 0 || this.callbacks.canDelete?.([...this.selected]) === false) {
+      return;
+    }
     this.isProcessing = true;
-
     const ids = [...this.selected];
     const restoreDelete = setButtonLoading(this.deleteBtn);
     this.resolveBtn.disabled = true;

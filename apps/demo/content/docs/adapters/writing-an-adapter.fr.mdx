@@ -22,7 +22,7 @@ npm i -D @siteping/adapter-kit vitest
 
 ## Backends snapshot
 
-Si votre stockage sait rendre la liste complète des feedbacks et en reprendre une entière, `createCollectionStore` vous donne un store complet et conforme. Il implémente toutes les sémantiques du contrat — déduplication par `clientId`, tri du plus récent au plus ancien, pipeline de filtrage et de pagination, `StoreNotFoundError` sur enregistrement absent, suppression en masse cadrée au projet, et `verifyProjectOwnership` :
+Si votre stockage sait rendre la liste complète des feedbacks et en reprendre une entière, `createCollectionStore` vous donne un store complet et conforme. Il implémente toutes les sémantiques du contrat — déduplication par `clientId`, tri du plus récent au plus ancien, pipeline de filtrage et de pagination, `StoreNotFoundError` sur enregistrement absent, suppression en masse cadrée au projet, ainsi que `verifyProjectOwnership` et `verifyFeedbackOwner` :
 
 ```ts
 import { createCollectionStore, type FeedbackRecord, type SitepingStore } from "@siteping/adapter-kit";
@@ -51,7 +51,7 @@ C'est un vrai adapter, pleinement conforme — c'est l'exemple contre lequel la 
 | `persist(feedbacks)` | Réécrit l'instantané complet. Levez `StorePersistenceError` quand l'écriture est perdue (quota, stockage désactivé) — ne l'avalez jamais |
 | `generateId()` | Un identifiant unique, utilisé pour les feedbacks comme pour les annotations |
 
-`createCollectionStore` renvoie un `CollectionStore` — un `SitepingStore` dont `verifyProjectOwnership` est garanti au lieu d'être optionnel, vous pouvez donc lui déléguer sans vérification préalable.
+`createCollectionStore` renvoie un `CollectionStore` — un `SitepingStore` où `verifyProjectOwnership` et `verifyFeedbackOwner` sont garantis au lieu d'être optionnels, vous pouvez donc leur déléguer sans vérification préalable.
 
 **Un `persist` qui échoue laisse votre instantané intact.** Le moteur ne modifie jamais le tableau renvoyé par `load()` — chaque écriture construit un nouveau tableau et le passe à `persist`. Donc si `load()` sert un tableau en cache et que l'écriture lève, aucun enregistrement fantôme ne reste visible, et le réessai du widget avec le même `clientId` est écrit pour de bon au lieu d'être dédupliqué contre quelque chose qui n'a jamais atteint le stockage.
 
@@ -88,7 +88,7 @@ export class DrizzleStore implements SitepingStore {
 }
 ```
 
-`buildFeedbackRecord` normalise chaque champ optionnel à `null`, horodate `createdAt`/`updatedAt`, met `resolvedAt` à `null` et construit les enregistrements d'annotations (`buildAnnotationRecord` en traite une seule si vous les insérez séparément). Il garde l'URL `data:` de la capture en ligne dans `screenshotUrl` ; les adapters dotés d'un stockage objet externe téléversent d'abord, puis écrasent ce champ.
+`buildFeedbackRecord` normalise chaque champ optionnel à `null`, y compris l'identité du propriétaire quand elle est absente ; il horodate `createdAt`/`updatedAt`, met `resolvedAt` à `null` et construit les enregistrements d'annotations (`buildAnnotationRecord` en traite une seule si vous les insérez séparément). Il garde l'URL `data:` de la capture en ligne dans `screenshotUrl` ; les adapters dotés d'un stockage objet externe téléversent d'abord, puis écrasent ce champ.
 
 ### Le contrat d'erreurs
 
@@ -116,7 +116,7 @@ Vous gardez un instantané en mémoire ? `applyFeedbackFilters(records, query)` 
 
 ## Appartenance au projet
 
-`verifyProjectOwnership(id, projectName)` est la seule méthode optionnelle. Les handlers HTTP l'appellent avant `PATCH` et `DELETE` et répondent 404 quand elle renvoie `false` — c'est ce qui empêche un projet de modifier les feedbacks d'un autre avec un id deviné. Le typage est structurel ici, donc les adapters tiers bénéficient de la vérification sans rien câbler :
+`verifyProjectOwnership(id, projectName)` est une méthode optionnelle. Les handlers HTTP l'appellent avant `PATCH` et `DELETE` et répondent 404 quand elle renvoie `false` — c'est ce qui empêche un projet de modifier les feedbacks d'un autre avec un id deviné. Les stores sont détectés structurellement, donc les adapters tiers bénéficient directement de cette vérification :
 
 ```ts
 async verifyProjectOwnership(id: string, projectName: string): Promise<boolean> {
@@ -126,6 +126,8 @@ async verifyProjectOwnership(id: string, projectName: string): Promise<boolean> 
 ```
 
 Implémentez-la dès que votre store sert plus d'un projet. En son absence, les handlers sautent la vérification et se fient au seul `id`.
+
+Avec OIDC, seuls les administrateurs peuvent changer le statut ou supprimer tous les feedbacks. Par défaut, les propriétaires peuvent supprimer leur propre feedback si le store implémente `verifyFeedbackOwner` ; définissez `oidc.allowOwnerDeletes: false` pour réserver toute suppression aux administrateurs. Le handler dérive le propriétaire interne de l'issuer et du subject vérifiés du jeton ; le nom et l'e-mail restent des champs widget distincts, fournis via `identity` ou la modale.
 
 ## La preuve : la suite de conformité
 

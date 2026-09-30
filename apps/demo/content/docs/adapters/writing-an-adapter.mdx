@@ -22,7 +22,7 @@ npm i -D @siteping/adapter-kit vitest
 
 ## Snapshot backends
 
-If your storage can hand back the whole feedback list and take a whole list back, `createCollectionStore` gives you a complete, conformant store. It implements every semantic of the contract — `clientId` deduplication, newest-first ordering, the filter and pagination pipeline, `StoreNotFoundError` on missing records, project-scoped bulk delete, and `verifyProjectOwnership`:
+If your storage can hand back the whole feedback list and take a whole list back, `createCollectionStore` gives you a complete, conformant store. It implements every semantic of the contract — `clientId` deduplication, newest-first ordering, the filter and pagination pipeline, `StoreNotFoundError` on missing records, project-scoped bulk delete, `verifyProjectOwnership`, and `verifyFeedbackOwner`:
 
 ```ts
 import { createCollectionStore, type FeedbackRecord, type SitepingStore } from "@siteping/adapter-kit";
@@ -51,7 +51,7 @@ That is a real, fully conformant adapter — it's the dogfood example the kit's 
 | `persist(feedbacks)` | Write the full snapshot back. Throw `StorePersistenceError` when the write is lost (quota, storage disabled) — never swallow it |
 | `generateId()` | A unique id, used for both feedback and annotation records |
 
-`createCollectionStore` returns a `CollectionStore` — a `SitepingStore` where `verifyProjectOwnership` is guaranteed rather than optional, so you can delegate to it without a null check.
+`createCollectionStore` returns a `CollectionStore` — a `SitepingStore` where both `verifyProjectOwnership` and `verifyFeedbackOwner` are guaranteed rather than optional, so you can delegate to them without a null check.
 
 **A failed `persist` leaves your snapshot untouched.** The engine never mutates the array `load()` returned — every write builds a new array and hands it to `persist`. So if `load()` serves a cached array and the write throws, no phantom record stays visible, and the widget's retry of the same `clientId` is written for real instead of being deduplicated against something that never reached storage.
 
@@ -88,7 +88,7 @@ export class DrizzleStore implements SitepingStore {
 }
 ```
 
-`buildFeedbackRecord` normalizes every optional field to `null`, stamps `createdAt`/`updatedAt`, sets `resolvedAt` to `null`, and builds the annotation records (`buildAnnotationRecord` does one annotation on its own if you insert them separately). It keeps the screenshot data URL inline on `screenshotUrl`; adapters with external object storage upload first and overwrite that field.
+`buildFeedbackRecord` normalizes every optional field to `null`, including owner identity when absent; it stamps `createdAt`/`updatedAt`, sets `resolvedAt` to `null`, and builds the annotation records (`buildAnnotationRecord` does one annotation on its own if you insert them separately). It keeps the screenshot data URL inline on `screenshotUrl`; adapters with external object storage upload first and overwrite that field.
 
 ### The error contract
 
@@ -116,7 +116,7 @@ Holding a snapshot in memory? `applyFeedbackFilters(records, query)` is exported
 
 ## Project ownership
 
-`verifyProjectOwnership(id, projectName)` is the one optional method. HTTP handlers call it before `PATCH` and `DELETE` and answer 404 when it returns `false` — that's what stops one project from mutating another's feedback with a guessed id. Stores are duck-typed here, so third-party adapters get the check for free:
+`verifyProjectOwnership(id, projectName)` is an optional method. HTTP handlers call it before `PATCH` and `DELETE` and answer 404 when it returns `false` — that's what stops one project from mutating another's feedback with a guessed id. Stores are duck-typed here, so third-party adapters get the check for free:
 
 ```ts
 async verifyProjectOwnership(id: string, projectName: string): Promise<boolean> {
@@ -126,6 +126,8 @@ async verifyProjectOwnership(id: string, projectName: string): Promise<boolean> 
 ```
 
 Implement it whenever your store serves more than one project. When it's absent, handlers skip the check and trust the `id` alone.
+
+With OIDC, only administrators may change status or delete all feedback. By default, owners may delete their own feedback when the store implements `verifyFeedbackOwner`; set `oidc.allowOwnerDeletes: false` to restrict every delete to administrators. The handler derives the internal owner from the verified token's issuer and subject; author name and email remain separate widget fields, supplied through `identity` or the identity prompt.
 
 ## Prove it: the conformance suite
 

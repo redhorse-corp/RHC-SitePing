@@ -35,13 +35,15 @@ Each mode is exported on its own — `InboxEndpointOptions`, `InboxStoreOptions`
 
 ## What you get back
 
-**Data** — `items` (all loaded pages), `total` (`null` until the first page lands), `counts` (per-status totals, best-effort), `loading`, `loadingMore`, `error`, `hasMore`, `loadMore()`, `refresh()`.
+**Data** — `items` (all loaded pages), `total` (`null` until the first page lands), `counts` (per-status totals, best-effort), optional `canManage` (any source may report it; the endpoint source forwards list permissions; `undefined` when the source omits it), `loading`, `loadingMore`, `error`, `hasMore`, `loadMore()`, `refresh()`.
 
 **Filters** — `project`/`setProject`, `status`/`setStatus` (starts on `"open"`), `type`/`setType`, `search`/`setSearch`. Search updates state instantly and debounces the refetch by 250 ms; queries are trimmed and capped at 200 characters.
 
 **Focus & drawer** — `focusedId`, `focus(id)`, `focusNext()`, `focusPrev()`, `openedId`, `opened` (the open record — it stays available even if a filter removes its row), `openFeedback(id)`, `closeFeedback()`.
 
 **Mutations** — `changeStatus(id, status)`, `deleteFeedback(id)`, `pendingUndo`, `undo()`.
+
+When `canManage === false`, the shipped inbox hides status and delete actions, including undo. Custom headless UIs should apply the same gate; the server remains the authorization boundary.
 
 ## `view` — skip the flag algebra
 

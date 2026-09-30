@@ -73,6 +73,8 @@ export class FakeFeedbackDelegate {
       screenshotUrl: (data.screenshotUrl as string | null | undefined) ?? null,
       screenshotRegion: (data.screenshotRegion as FeedbackRecord["screenshotRegion"]) ?? null,
       diagnostics: (data.diagnostics as FeedbackRecord["diagnostics"]) ?? null,
+      ownerIssuer: (data.ownerIssuer as string | null | undefined) ?? null,
+      ownerSubject: (data.ownerSubject as string | null | undefined) ?? null,
       resolvedAt: null,
       createdAt: now,
       updatedAt: now,
