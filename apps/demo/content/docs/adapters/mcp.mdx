@@ -1,0 +1,210 @@
+---
+title: MCP server
+description: Connect an MCP client to project-scoped Siteping feedback.
+---
+
+`@siteping/adapter-prisma/mcp` adds a Model Context Protocol server to the app that already hosts your Siteping store. It exposes feedback listing, search, and status changes over Streamable HTTP. It does not need a separate service.
+
+The handler uses the stable TypeScript SDK v2 and supports the MCP specification dated 2026-07-28. Its default stateless legacy fallback also accepts compatible older clients. The server does not keep per-client MCP sessions.
+
+## Install the optional MCP peer
+
+The MCP entry point has an optional peer dependency. Install it only in an app that imports the MCP entry point. REST-only apps do not need it.
+
+```bash
+npm install @siteping/adapter-prisma @modelcontextprotocol/server@^2.2.0
+```
+
+If the app already depends on `@siteping/adapter-prisma`, install only `@modelcontextprotocol/server@^2.2.0`. Run the server on Node.js 20 or later.
+
+## Create the handler
+
+Use the same `SitepingStore` that backs your Siteping API. For a durable production deployment, pass your existing Prisma client to `PrismaStore`:
+
+```ts
+import { PrismaStore } from "@siteping/adapter-prisma";
+import { createSitepingMcpHandler } from "@siteping/adapter-prisma/mcp";
+import { prisma } from "@/lib/prisma";
+
+const allowedOrigins = process.env.SITEPING_MCP_ALLOWED_ORIGINS
+  ?.split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+export const sitepingMcpHandler = createSitepingMcpHandler({
+  store: new PrismaStore(prisma),
+  projectName: process.env.SITEPING_MCP_PROJECT!,
+  resourceUrl: new URL(process.env.SITEPING_MCP_RESOURCE_URL!),
+  oidc: {
+    issuer: process.env.SITEPING_MCP_OIDC_ISSUER!,
+    jwksUri: process.env.SITEPING_MCP_OIDC_JWKS_URI!,
+    rolesClaim: process.env.SITEPING_MCP_OIDC_ROLES_CLAIM ?? "roles",
+    adminRoles: (process.env.SITEPING_MCP_OIDC_ADMIN_ROLES ?? "admin")
+      .split(",")
+      .map((role) => role.trim())
+      .filter(Boolean),
+  },
+  ...(allowedOrigins ? { allowedOrigins } : {}),
+});
+```
+
+`SITEPING_MCP_RESOURCE_URL` is the canonical URL of the MCP endpoint. The handler uses that same URL as the token audience. Do not add a separate audience setting.
+
+### Mount the two Next.js routes
+
+For the demo, the MCP route lives at `apps/demo/src/app/api/siteping/mcp/route.ts`. It calls `sitepingMcpFetch`, which uses the configured handler or returns `404` when MCP is disabled. Export each route method:
+
+```ts
+import { sitepingMcpFetch } from "@/lib/siteping-mcp";
+
+export const dynamic = "force-dynamic";
+
+export function GET(request: Request): Promise<Response> {
+  return sitepingMcpFetch(request);
+}
+
+export function POST(request: Request): Promise<Response> {
+  return sitepingMcpFetch(request);
+}
+
+export function DELETE(request: Request): Promise<Response> {
+  return sitepingMcpFetch(request);
+}
+
+export function OPTIONS(request: Request): Promise<Response> {
+  return sitepingMcpFetch(request);
+}
+```
+
+Mount Protected Resource Metadata at `apps/demo/src/app/.well-known/oauth-protected-resource/api/siteping/mcp/route.ts`. This route uses the same fetch function and returns metadata without a bearer token:
+
+```ts
+import { sitepingMcpFetch } from "@/lib/siteping-mcp";
+
+export const dynamic = "force-dynamic";
+
+export function GET(request: Request): Promise<Response> {
+  return sitepingMcpFetch(request);
+}
+
+export function OPTIONS(request: Request): Promise<Response> {
+  return sitepingMcpFetch(request);
+}
+```
+
+The public MCP endpoint is `/api/siteping/mcp`. Its path-aware metadata URL is `/.well-known/oauth-protected-resource/api/siteping/mcp`. Both demo routes call `sitepingMcpFetch`, which shares one configured handler.
+
+The handler returned by `createSitepingMcpHandler` exposes `fetch`, `close`, and the read-only `protectedResourceMetadataPath`. Mount both paths on the same host. Call `close()` during server shutdown, not after each request.
+
+## Configure the endpoint
+
+Set the MCP variables on the server. Do not prefix them with `NEXT_PUBLIC_`.
+
+```dotenv
+SITEPING_MCP_RESOURCE_URL=https://feedback.example.com/api/siteping/mcp
+SITEPING_MCP_PROJECT=demo
+SITEPING_MCP_OIDC_ISSUER=https://id.example.com/
+SITEPING_MCP_OIDC_JWKS_URI=https://id.example.com/.well-known/jwks.json
+SITEPING_MCP_OIDC_ROLES_CLAIM=groups
+SITEPING_MCP_OIDC_ADMIN_ROLES=siteping-admin,siteping-owner
+SITEPING_MCP_ALLOWED_ORIGINS=https://feedback.example.com,https://dashboard.example.com
+```
+
+| Variable | Required | Meaning |
+|---|---:|---|
+| `SITEPING_MCP_RESOURCE_URL` | Yes | Absolute URL of the MCP endpoint. Its `href` is the access-token audience. It cannot contain credentials, a query, or a fragment. |
+| `SITEPING_MCP_PROJECT` | Yes | The one project this server can read and change. MCP tools do not accept a project name. |
+| `SITEPING_MCP_OIDC_ISSUER` | Yes | Issuer that signs the access tokens. |
+| `SITEPING_MCP_OIDC_JWKS_URI` | Yes | JWKS URL used to verify the token signature. Use HTTPS in production. |
+| `SITEPING_MCP_OIDC_ROLES_CLAIM` | No | Claim that holds user roles. Defaults to `roles`. |
+| `SITEPING_MCP_OIDC_ADMIN_ROLES` | No | Comma-separated administrator role names. Defaults to `admin`. A token must match one of these roles. |
+| `SITEPING_MCP_ALLOWED_ORIGINS` | No | Comma-separated, exact browser origins. Include the scheme and port when present. The server does not accept wildcard origins. |
+
+If every MCP variable is absent, the demo does not mount the endpoint and returns `404`. A partial MCP configuration fails at startup. There is no enable flag. Keep every value server-side.
+
+The demo requires `SITEPING_MCP_RESOURCE_URL` to use the `/api/siteping/mcp` path. Use `http://127.0.0.1:3000/api/siteping/mcp` only in development on loopback. Production resource, issuer, and JWKS URLs must use HTTPS. The access token's `aud` must equal the configured `resourceUrl.href`. Do not use an app-login ID token or a token issued for the REST API.
+
+The handler checks `Host` against `resourceUrl.host`, including the port. A reverse proxy must preserve that public Host. The framework's internal request URL may differ from the public resource URL. Any supplied browser `Origin` must exactly match `SITEPING_MCP_ALLOWED_ORIGINS`, or the handler returns `403`. Requests without `Origin` are accepted.
+
+## Prepare the OAuth provider
+
+Siteping is the OAuth resource server. It verifies access tokens but does not issue them. Before connecting a remote client, confirm that your authorization server:
+
+1. Publishes OAuth authorization-server or OpenID Connect discovery metadata.
+2. Supports OAuth 2.1 authorization code flow with PKCE for public clients.
+3. Accepts the MCP `resource` indicator and issues an access token for the exact `SITEPING_MCP_RESOURCE_URL` audience.
+4. Supports either pre-registered clients or dynamic client registration (DCR) for each client you plan to use.
+5. Puts the configured roles claim and at least one configured administrator role in the access token.
+
+The endpoint publishes RFC 9728 Protected Resource Metadata at its well-known metadata URL. That metadata points clients to the configured issuer. A provider that can verify ordinary OIDC JWTs may still lack the discovery, PKCE, resource-indicator, or client-registration features needed for an interactive MCP login. Do not describe a deployment as OAuth-ready until you test its provider and a real client against these requirements.
+
+A remote client must support Streamable HTTP and the MCP OAuth flow. Add the endpoint as a remote MCP server in the client, then follow its sign-in prompt. The client obtains its own access token and sends it as a bearer token. Do not paste a token into the endpoint URL or a query parameter.
+
+For Claude Code, add the remote URL:
+
+```bash
+claude mcp add --transport http siteping https://feedback.example.com/api/siteping/mcp
+```
+
+Claude Code discovers the resource metadata and starts its OAuth sign-in flow when the provider supports the prerequisites above. For clients that require a pre-registered OAuth client, register that client with the provider first.
+
+## Use the three feedback tools
+
+Every MCP request requires a verified administrator access token. This remains true even if the REST API allows public reads. The configured project is fixed by `SITEPING_MCP_PROJECT`; an agent cannot switch projects by changing tool arguments.
+
+| Tool | Inputs | Result |
+|---|---|---|
+| `list_feedback` | Optional `page` (integer from 1 to 1,000,000, default 1), `limit` (integer from 1 to 100, default 50), `type` (`question`, `change`, `bug`, `other`), `status` (`open`, `in_progress`, `resolved`, `wont_fix`), `url`, and `urlPattern` (non-empty strings up to 2,048 characters). | Structured `{ feedbacks, total, page, limit }` result, newest first. |
+| `search_feedback` | All `list_feedback` inputs plus `query` (trimmed, 1 to 500 characters). | Feedback matching the message text, in the same structured result shape. |
+| `change_feedback_status` | `feedbackId` (trimmed, 1 to 256 characters) and one of the listed statuses. | The updated feedback projection. |
+
+Tool inputs use strict schemas, so unknown fields fail validation. Siteping derives `resolvedAt` when the status changes. `resolved` and `wont_fix` set it; `open` and `in_progress` clear it.
+
+Results contain only `id`, `type`, `message`, `status`, `url`, `urlPattern`, and the three timestamps. Author details, client and owner identifiers, annotations, screenshots, and diagnostics are omitted. The status tool is absent when the store lacks `verifyProjectOwnership`. Every status write checks the configured project before updating.
+
+Run `bun run smoke:mcp` to exercise real HTTP, signed tokens, and both protocol eras. To check a running Next host too, pass its reachable base URL and configured public MCP URL as two arguments. For example, run `bun run smoke:mcp http://127.0.0.1:3000 https://feedback.example.com/api/siteping/mcp` against a host configured for that resource.
+
+For example, a successful `list_feedback` call can return:
+
+```json
+{
+  "feedbacks": [
+    {
+      "id": "fb_123",
+      "type": "bug",
+      "message": "The save button stays disabled after editing the title.",
+      "status": "open",
+      "url": "https://product.example.com/settings",
+      "urlPattern": null,
+      "createdAt": "2026-09-01T12:00:00.000Z",
+      "updatedAt": "2026-09-01T12:00:00.000Z",
+      "resolvedAt": null
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "limit": 20
+}
+```
+
+Without a token, the endpoint returns `401` and a `WWW-Authenticate` challenge that points to Protected Resource Metadata. A valid token without an administrator role returns `403`:
+
+```http
+HTTP/1.1 401 Unauthorized
+WWW-Authenticate: Bearer resource_metadata="https://feedback.example.com/.well-known/oauth-protected-resource/api/siteping/mcp"
+```
+
+## Use the demo store only for evaluation
+
+The Siteping demo mounts MCP against the same `memoryStore` as its REST route. That store resets and reseeds every 10 minutes, and it is not production persistence. For a production endpoint, pass your existing `PrismaStore` or another durable `SitepingStore` to the handler. Keep the REST and MCP routes on the same trusted store when they must share feedback.
+
+## Read the protocol and client examples
+
+- [MCP specification, 2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28)
+- [Streamable HTTP transport](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http)
+- [MCP authorization](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization)
+- [TypeScript SDK v2 HTTP serving guide](https://ts.sdk.modelcontextprotocol.io/v2/serving/http)
+- [TypeScript SDK v2 authorization guide](https://ts.sdk.modelcontextprotocol.io/v2/serving/authorization)
+- [Marker.io MCP integration](https://help.marker.io/en/articles/14034657-mcp-integration-model-context-protocol) documents a hosted feedback endpoint and OAuth client setup.
+- [MCPFeedback MCP docs](https://mcpfeedback.com/docs/mcp) describe a feedback-focused remote MCP service.
+- [Ventus MCP package README](https://raw.githubusercontent.com/ventus-software-solutions/ventus-inapp-feedback/main/apps/mcp-server/README.md) describes a stdio adapter, not a hosted HTTP endpoint.
