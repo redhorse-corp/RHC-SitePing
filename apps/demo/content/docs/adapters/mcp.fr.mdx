@@ -1,0 +1,208 @@
+---
+title: Serveur MCP
+description: Connectez un client MCP aux feedbacks Siteping d’un projet.
+---
+
+`@siteping/mcp` ajoute un serveur Model Context Protocol autonome à une application qui héberge déjà un store Siteping. Il expose la liste, la recherche et le changement de statut des feedbacks via Streamable HTTP. Il accepte tout `SitepingStore`, ne nécessite pas Prisma et ne requiert pas de service séparé.
+
+Le handler utilise la version 2 stable du SDK TypeScript et prend en charge la spécification MCP du 2026-07-28. Son mode de compatibilité stateless par défaut accepte aussi les anciens clients compatibles. Le serveur ne conserve pas de session MCP par client.
+
+## Installation
+
+```bash
+npm install @siteping/mcp
+```
+
+Le package installe le SDK MCP TypeScript comme dépendance d’exécution. Utilisez Node.js 20 ou une version ultérieure.
+
+## Créer le handler
+
+Le handler accepte tout `SitepingStore`. Prisma n’est pas nécessaire ; cet exemple utilise `PrismaStore` comme un adapter de production persistant parmi d’autres. Pour un autre store, transmettez ce store à la place :
+
+```ts
+import { PrismaStore } from "@siteping/adapter-prisma";
+import { createSitepingMcpHandler } from "@siteping/mcp";
+import { prisma } from "@/lib/prisma";
+
+const allowedOrigins = process.env.SITEPING_MCP_ALLOWED_ORIGINS
+  ?.split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+export const sitepingMcpHandler = createSitepingMcpHandler({
+  store: new PrismaStore(prisma),
+  projectName: process.env.SITEPING_MCP_PROJECT!,
+  resourceUrl: new URL(process.env.SITEPING_MCP_RESOURCE_URL!),
+  oidc: {
+    issuer: process.env.SITEPING_MCP_OIDC_ISSUER!,
+    jwksUri: process.env.SITEPING_MCP_OIDC_JWKS_URI!,
+    rolesClaim: process.env.SITEPING_MCP_OIDC_ROLES_CLAIM ?? "roles",
+    adminRoles: (process.env.SITEPING_MCP_OIDC_ADMIN_ROLES ?? "admin")
+      .split(",")
+      .map((role) => role.trim())
+      .filter(Boolean),
+  },
+  ...(allowedOrigins ? { allowedOrigins } : {}),
+});
+```
+
+`SITEPING_MCP_RESOURCE_URL` est l’URL canonique du point de terminaison MCP. Le handler utilise cette même URL comme audience du jeton. N’ajoutez pas de variable d’audience distincte.
+
+### Monter les deux routes Next.js
+
+Pour la démo, la route MCP se trouve dans `apps/demo/src/app/api/siteping/mcp/route.ts`. Elle appelle `sitepingMcpFetch`, qui utilise le handler configuré ou renvoie `404` si MCP est désactivé. Exportez ces méthodes :
+
+```ts
+import { sitepingMcpFetch } from "@/lib/siteping-mcp";
+
+export const dynamic = "force-dynamic";
+
+export function GET(request: Request): Promise<Response> {
+  return sitepingMcpFetch(request);
+}
+
+export function POST(request: Request): Promise<Response> {
+  return sitepingMcpFetch(request);
+}
+
+export function DELETE(request: Request): Promise<Response> {
+  return sitepingMcpFetch(request);
+}
+
+export function OPTIONS(request: Request): Promise<Response> {
+  return sitepingMcpFetch(request);
+}
+```
+
+Montez Protected Resource Metadata dans `apps/demo/src/app/.well-known/oauth-protected-resource/api/siteping/mcp/route.ts`. Cette route utilise la même fonction `sitepingMcpFetch` et renvoie les métadonnées sans bearer token :
+
+```ts
+import { sitepingMcpFetch } from "@/lib/siteping-mcp";
+
+export const dynamic = "force-dynamic";
+
+export function GET(request: Request): Promise<Response> {
+  return sitepingMcpFetch(request);
+}
+
+export function OPTIONS(request: Request): Promise<Response> {
+  return sitepingMcpFetch(request);
+}
+```
+
+Le point de terminaison MCP public est `/api/siteping/mcp`. L’URL des métadonnées correspondante est `/.well-known/oauth-protected-resource/api/siteping/mcp`. Les deux routes de la démo appellent `sitepingMcpFetch`, qui utilise la même instance du handler configuré.
+
+Le handler renvoyé par `createSitepingMcpHandler` expose `fetch`, `close` et la propriété en lecture seule `protectedResourceMetadataPath`. Montez les deux chemins sur le même hôte. Appelez `close()` à l’arrêt du serveur, pas après chaque requête.
+
+## Configurer le point de terminaison
+
+Définissez les variables MCP côté serveur. N’utilisez pas le préfixe `NEXT_PUBLIC_`.
+
+```dotenv
+SITEPING_MCP_RESOURCE_URL=https://feedback.example.com/api/siteping/mcp
+SITEPING_MCP_PROJECT=demo
+SITEPING_MCP_OIDC_ISSUER=https://id.example.com/
+SITEPING_MCP_OIDC_JWKS_URI=https://id.example.com/.well-known/jwks.json
+SITEPING_MCP_OIDC_ROLES_CLAIM=groups
+SITEPING_MCP_OIDC_ADMIN_ROLES=siteping-admin,siteping-owner
+SITEPING_MCP_ALLOWED_ORIGINS=https://feedback.example.com,https://dashboard.example.com
+```
+
+| Variable | Obligatoire | Rôle |
+|---|---:|---|
+| `SITEPING_MCP_RESOURCE_URL` | Oui | URL absolue du point de terminaison MCP. Son `href` est l’audience du jeton d’accès. Elle ne peut contenir ni identifiants, ni requête, ni fragment. |
+| `SITEPING_MCP_PROJECT` | Oui | L’unique projet que le serveur peut lire et modifier. Les outils MCP n’acceptent pas de nom de projet. |
+| `SITEPING_MCP_OIDC_ISSUER` | Oui | Émetteur des jetons d’accès. |
+| `SITEPING_MCP_OIDC_JWKS_URI` | Oui | URL du document JWKS utilisé pour vérifier la signature du jeton. Utilisez HTTPS en production. |
+| `SITEPING_MCP_OIDC_ROLES_CLAIM` | Non | Claim qui contient les rôles de l’utilisateur. Valeur par défaut : `roles`. |
+| `SITEPING_MCP_OIDC_ADMIN_ROLES` | Non | Noms de rôles administrateur séparés par des virgules. Valeur par défaut : `admin`. Le jeton doit correspondre à l’un de ces rôles. |
+| `SITEPING_MCP_ALLOWED_ORIGINS` | Non | Origines de navigateur exactes séparées par des virgules. Indiquez le schéma et le port, le cas échéant. Les jokers ne sont pas acceptés. |
+
+Si toutes les variables MCP sont absentes, la démo ne monte pas le point de terminaison et renvoie `404`. Une configuration MCP partielle provoque une erreur au démarrage. Aucun indicateur d’activation n’existe. Gardez toutes ces valeurs côté serveur.
+
+La démo exige que `SITEPING_MCP_RESOURCE_URL` utilise le chemin `/api/siteping/mcp`. Utilisez `http://127.0.0.1:3000/api/siteping/mcp` uniquement en développement sur loopback. En production, les URL de ressource, d’issuer et de JWKS doivent utiliser HTTPS. Le claim `aud` du jeton d’accès doit être exactement égal à `resourceUrl.href`. N’utilisez pas un ID token de connexion à l’application ni un jeton émis pour l’API REST.
+
+Le handler compare `Host` à `resourceUrl.host`, port compris. Le reverse proxy doit préserver ce Host public. L'URL interne construite par le framework peut différer de l'URL publique. Chaque `Origin` fourni doit correspondre exactement à `SITEPING_MCP_ALLOWED_ORIGINS`, sinon le handler renvoie `403`. Les requêtes sans `Origin` sont acceptées.
+
+## Préparer le fournisseur OAuth
+
+Siteping est le serveur de ressources OAuth. Il vérifie les jetons d’accès, mais ne les émet pas. Avant de connecter un client distant, vérifiez que votre serveur d’autorisation :
+
+1. Publie les métadonnées de découverte OAuth ou OpenID Connect.
+2. Prend en charge le flux OAuth 2.1 avec code d’autorisation et PKCE pour les clients publics.
+3. Accepte l’indicateur `resource` de MCP et émet un jeton d’accès destiné à l’audience exacte de `SITEPING_MCP_RESOURCE_URL`.
+4. Accepte soit les clients préenregistrés, soit l’enregistrement dynamique des clients (DCR) pour chaque client prévu.
+5. Place le claim de rôles configuré et au moins un rôle administrateur configuré dans le jeton d’accès.
+
+Le point de terminaison publie Protected Resource Metadata selon la RFC 9728 à son URL de métadonnées bien connue. Ces métadonnées indiquent l’issuer configuré. Un fournisseur capable de vérifier des JWT OIDC ordinaires peut ne pas prendre en charge la découverte, PKCE, l’indicateur de ressource ou l’enregistrement client nécessaires à une connexion MCP interactive. Ne présentez pas un déploiement comme prêt pour OAuth avant d’avoir testé le fournisseur et un vrai client selon ces exigences.
+
+Un client distant doit prendre en charge Streamable HTTP et le flux OAuth de MCP. Ajoutez le point de terminaison comme serveur MCP distant dans le client, puis suivez sa demande de connexion. Le client obtient son propre jeton d’accès et l’envoie comme bearer token. Ne placez jamais un jeton dans l’URL du point de terminaison ni dans un paramètre de requête.
+
+Pour Claude Code, ajoutez l’URL distante :
+
+```bash
+claude mcp add --transport http siteping https://feedback.example.com/api/siteping/mcp
+```
+
+Claude Code découvre les métadonnées de ressource et démarre la connexion OAuth si le fournisseur répond aux exigences ci-dessus. Si le client exige un client OAuth préenregistré, enregistrez-le d’abord auprès du fournisseur.
+
+## Utiliser les trois outils de feedback
+
+Chaque requête MCP exige un jeton d’accès vérifié avec un rôle administrateur. Cette règle s’applique même si l’API REST autorise les lectures publiques. Le projet configuré est fixé par `SITEPING_MCP_PROJECT`. Un agent ne peut pas changer de projet en modifiant les arguments d’un outil.
+
+| Outil | Entrées | Résultat |
+|---|---|---|
+| `list_feedback` | `page` facultatif, entier de 1 à 1 000 000 avec 1 par défaut, `limit` facultatif, entier de 1 à 100 avec 50 par défaut, `type` (`question`, `change`, `bug`, `other`), `status` (`open`, `in_progress`, `resolved`, `wont_fix`), `url` et `urlPattern` (chaînes non vides de 2 048 caractères maximum). | Résultat structuré `{ feedbacks, total, page, limit }`, du plus récent au plus ancien. |
+| `search_feedback` | Les entrées de `list_feedback` et `query`, une chaîne de 1 à 500 caractères après retrait des espaces au début et à la fin. | Feedbacks dont le message correspond, dans le même format structuré. |
+| `change_feedback_status` | `feedbackId`, une chaîne de 1 à 256 caractères après retrait des espaces au début et à la fin, et l’un des statuts indiqués. | Projection du feedback mis à jour. |
+
+Les entrées utilisent des schémas stricts. Les champs inconnus échouent à la validation. Siteping calcule `resolvedAt` lors du changement de statut. Les statuts `resolved` et `wont_fix` le renseignent. Les statuts `open` et `in_progress` l’effacent.
+
+Les résultats contiennent uniquement `id`, `type`, `message`, `status`, `url`, `urlPattern` et les trois horodatages. Les informations d'auteur, les identifiants client et propriétaire, les annotations, les captures d'écran et les diagnostics sont exclus. L'outil de statut est absent si le store n'implémente pas `verifyProjectOwnership`. Chaque écriture vérifie le projet configuré avant la modification.
+
+Exécutez d’abord `bun run build` afin que le smoke test charge le point d’entrée compilé de `@siteping/mcp`, puis exécutez `bun run smoke:mcp` pour vérifier HTTP, les jetons signés et les deux générations du protocole. Pour vérifier aussi un serveur Next actif, ajoutez son URL de base accessible et son URL MCP publique configurée comme deux arguments. Par exemple, exécutez `bun run smoke:mcp http://127.0.0.1:3000 https://feedback.example.com/api/siteping/mcp` avec un serveur configuré pour cette ressource.
+
+Par exemple, un appel réussi à `list_feedback` peut renvoyer :
+
+```json
+{
+  "feedbacks": [
+    {
+      "id": "fb_123",
+      "type": "bug",
+      "message": "Le bouton d’enregistrement reste désactivé après la modification du titre.",
+      "status": "open",
+      "url": "https://product.example.com/settings",
+      "urlPattern": null,
+      "createdAt": "2026-09-01T12:00:00.000Z",
+      "updatedAt": "2026-09-01T12:00:00.000Z",
+      "resolvedAt": null
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "limit": 20
+}
+```
+
+Sans jeton, le point de terminaison renvoie `401` avec un challenge `WWW-Authenticate` qui indique Protected Resource Metadata. Un jeton valide sans rôle administrateur renvoie `403` :
+
+```http
+HTTP/1.1 401 Unauthorized
+WWW-Authenticate: Bearer resource_metadata="https://feedback.example.com/.well-known/oauth-protected-resource/api/siteping/mcp"
+```
+
+## Réserver le store de démo à l’évaluation
+
+La démo Siteping monte MCP sur le même `memoryStore` que sa route REST. Ce store est réinitialisé et réensemencé toutes les 10 minutes. Il ne fournit pas de persistance adaptée à la production. En production, transmettez votre `PrismaStore` existant ou un autre `SitepingStore` persistant au handler. Gardez les routes REST et MCP sur le même store de confiance si elles doivent partager les feedbacks.
+
+## Consulter le protocole et des exemples clients
+
+- [Spécification MCP du 2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28)
+- [Transport Streamable HTTP](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http)
+- [Autorisation MCP](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization)
+- [Guide HTTP de service du SDK TypeScript v2](https://ts.sdk.modelcontextprotocol.io/v2/serving/http)
+- [Guide d’autorisation du SDK TypeScript v2](https://ts.sdk.modelcontextprotocol.io/v2/serving/authorization)
+- [Intégration MCP de Marker.io](https://help.marker.io/en/articles/14034657-mcp-integration-model-context-protocol) décrit un endpoint de feedback hébergé et la configuration d’un client OAuth.
+- [Documentation MCPFeedback](https://mcpfeedback.com/docs/mcp) décrit un service MCP distant consacré aux feedbacks.
+- [README du package MCP de Ventus](https://raw.githubusercontent.com/ventus-software-solutions/ventus-inapp-feedback/main/apps/mcp-server/README.md) décrit un adaptateur stdio, pas un endpoint HTTP hébergé.

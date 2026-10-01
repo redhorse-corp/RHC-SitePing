@@ -17,6 +17,7 @@
     "@siteping/adapter-memory": "workspace:*",
     "@siteping/adapter-prisma": "workspace:*",
     "@siteping/dashboard": "workspace:*",
+    "@siteping/mcp": "workspace:*",
     "@siteping/widget": "workspace:*",
     "gsap": "^3.15.0",
     "next": "^16.3.5",

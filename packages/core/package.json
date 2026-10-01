@@ -13,6 +13,10 @@
     },
     "./testing": {
       "default": "./src/testing.ts"
+    },
+    "./oidc": {
+      "types": "./dist/oidc.d.ts",
+      "default": "./src/oidc.ts"
     }
   },
   "author": "neosianexus",
@@ -39,5 +43,8 @@
     "type": "git",
     "url": "git+https://github.com/NeosiaNexus/SitePing.git",
     "directory": "packages/core"
+  },
+  "dependencies": {
+    "jose": "^6"
   }
 }

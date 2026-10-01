@@ -14,7 +14,8 @@ RUN bun run --filter='@siteping/core' build && \
     bun run --filter='@siteping/dashboard' build && \
     bun run --filter='@siteping/adapter-memory' build && \
     bun run --filter='@siteping/adapter-localstorage' build && \
-    bun run --filter='@siteping/adapter-prisma' build
+    bun run --filter='@siteping/adapter-prisma' build && \
+    bun run --filter='@siteping/mcp' build
 RUN cd apps/demo && bun run build
 
 # --- Runner ---

@@ -25,6 +25,7 @@
     "test:e2e": "playwright test",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
+    "smoke:mcp": "bun scripts/smoke-mcp.mjs",
     "verify": "bun run build && bun run check && bun run lint && bun run test:run",
     "pkg-checks": "node scripts/pkg-checks.mjs",
     "check:consistency": "node scripts/check-consistency.mjs",

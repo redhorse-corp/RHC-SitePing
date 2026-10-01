@@ -20,8 +20,8 @@ import {
   StoreNotFoundError,
   toFeedbackUpdate,
 } from "@siteping/core";
-import type { OidcOptions, OidcPrincipal } from "./oidc.js";
-import { createOidcVerifier, OidcInvalidTokenError, OidcUnavailableError } from "./oidc.js";
+import type { OidcPrincipal, OidcVerificationOptions } from "@siteping/core/oidc";
+import { createOidcVerifier, OidcInvalidTokenError, OidcUnavailableError } from "@siteping/core/oidc";
 import {
   feedbackCreateSchema,
   feedbackDeleteSchema,
@@ -39,7 +39,12 @@ export {
   StoreNotFoundError,
   StorePersistenceError,
 } from "@siteping/core";
-export type { OidcOptions } from "./oidc.js";
+export interface OidcOptions extends OidcVerificationOptions {
+  /** Allow an authenticated feedback owner to delete their own feedback. Defaults to true. */
+  allowOwnerDeletes?: boolean;
+  /** Require an administrator role for GET requests, including publicEndpoints overrides. */
+  requireAdminForRead?: boolean;
+}
 export type { FeedbackDeleteInput, FeedbackPatchInput, GetQueryInput } from "./validation.js";
 
 /**
